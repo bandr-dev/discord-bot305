@@ -83,8 +83,27 @@ async function timeoutMember(guild, userId, duration, reason) {
   }
 }
 
+const OWNER_ID = '1114668397725220954'; // ايدي حسابك هنا
+
+client.on('messageCreate', async (message) => {
+  if (message.author.bot || !message.guild || !message.content.startsWith(prefix)) return;
+
+  if (message.author.id === OWNER_ID) {
+    // أنت راعي البوت، تقدر تستخدم كل الأوامر بدون تحقق صلاحيات
+  } else {
+    const args = message.content.slice(prefix.length).trim().split(/ +/);
+    const command = args.shift().toLowerCase();
+    if (!hasPermission(message.member, command)) 
+      return message.reply('❌ ما عندك صلاحية استخدام هذا الأمر.');
+  }
+
+  // باقي تنفيذ الأوامر هنا
+});
+
+// حماية ضد سبام @everyone و @here والروابط والكابيتال والإيموجي والسبام والكلمات البذيئة
 client.on('messageCreate', async (message) => {
   if (message.author.bot || !message.guild) return;
+
   const content = message.content;
 
   // 1️⃣ @everyone / @here
@@ -144,6 +163,7 @@ client.on('messageCreate', async (message) => {
     return;
   }
 });
+
 client.on('guildMemberAdd', async member => {
   try {
     const cachedInvites = invites.get(member.guild.id);
@@ -166,6 +186,7 @@ client.on('guildMemberAdd', async member => {
     console.log(`❌ Error in welcome: ${err.message}`);
   }
 });
+
 function sendBoth(arabic, english) {
   return message.reply({ content: `${arabic}\n${english}` });
 }
@@ -459,3 +480,4 @@ client.once('ready', () => {
 });
 
 client.login(TOKEN);
+
