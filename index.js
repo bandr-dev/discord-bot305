@@ -125,17 +125,6 @@ client.on('messageCreate', async (message) => {
     return;
   }
 
-  // 3️⃣ Excessive Caps
-  const lettersOnly = content.replace(/[^a-zA-Zأ-ي]/g, '');
-  const capsCount = (lettersOnly.match(/[A-Zأ-ي]/g) || []).length;
-  const capsPercentage = lettersOnly.length > 0 ? (capsCount / lettersOnly.length) * 100 : 0;
-  if (capsPercentage > CAPS_PERCENTAGE_LIMIT) {
-    await message.delete().catch(() => {});
-    await deleteUserMessages(message.channel, message.author.id);
-    await timeoutMember(message.guild, message.author.id, 86400000, 'Excessive capitalization');
-    return;
-  }
-
   // 4️⃣ Emoji Spam
   const emojiCount = (content.match(/<a?:.+?:\d+>|[\uD800-\uDBFF][\uDC00-\uDFFF]/g) || []).length;
   if (emojiCount >= EMOJI_SPAM_LIMIT) {
@@ -534,6 +523,7 @@ client.once('ready', () => {
 });
 
 client.login(TOKEN);
+
 
 
 
