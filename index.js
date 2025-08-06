@@ -335,8 +335,6 @@ if (command === 'نشر') {
 }
 
 
-    await message.channel.send({ embeds: [embed], components: [row] });
-    return;
   }
 
   if (command === 'help' || command === 'مساعدة') {
@@ -540,6 +538,7 @@ client.once('ready', () => {
 });
 
 client.login(TOKEN);
+
 
 
 
