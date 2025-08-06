@@ -334,6 +334,7 @@ if (command === 'نشر') {
   message.channel.send({ embeds: [embed] });
 }
 
+
     await message.channel.send({ embeds: [embed], components: [row] });
     return;
   }
@@ -539,6 +540,7 @@ client.once('ready', () => {
 });
 
 client.login(TOKEN);
+
 
 
 
