@@ -66,7 +66,7 @@ const LOG_CHANNEL_ID = '1196376675055845426'; // Replace with your log channel I
 const EMOJI_SPAM_LIMIT = 5;
 const CAPS_PERCENTAGE_LIMIT = 70;
 const SPAM_LIMIT = 5;
-const TIME_WINDOW = 5000;
+const TIME_WINDOW = 10000;
 
 
 // Delete all user messages in a channel (up to 100 messages)
@@ -515,6 +515,7 @@ client.once('ready', () => {
 });
 
 client.login(TOKEN);
+
 
 
 
