@@ -59,11 +59,6 @@ const badWords = [
   'fuck','bitch','asshole','bastard','slut','whore','dick','pussy','faggot','motherfucker','cunt','nigger','retard','suck','cum','nigga','blowjob','rape','molest','pedo','porn','sex','dildo','cock','boobs','tits','jerk','anal'
 ];
 
-const EMOJI_SPAM_LIMIT = 10;
-const MENTION_SPAM_LIMIT = 5;
-const CAPS_PERCENTAGE_LIMIT = 70;
-const SPAM_LIMIT = 5;
-const TIME_WINDOW = 5000;
 const MAX_ACTIONS = 3;
 const ACTION_RESET_TIME = 10000;
 
@@ -334,31 +329,69 @@ function hasPermission(member, command) {
   return false;
 }
 
-// === أوامر الإدارة ===
-client.on('messageCreate', async (message) => {
-if (message.author.bot || !message.guild) return;
+// ================== Anti-Spam Protection System ==================
 
-  const content = message.content.toLowerCase();
+const { EmbedBuilder, PermissionsBitField } = require('discord.js');
+
+const EMOJI_SPAM_LIMIT = 5;
+const MENTION_SPAM_LIMIT = 2;
+const CAPS_PERCENTAGE_LIMIT = 70;
+const SPAM_LIMIT = 5;
+const TIME_WINDOW = 5000; // 5 ثواني
+
+const userMessages = new Map();
+
+// دالة حذف جميع رسائل العضو في الروم (حتى 100 رسالة)
+async function deleteUserMessages(channel, userId) {
+  const messages = await channel.messages.fetch({ limit: 100 });
+  const userMessages = messages.filter(m => m.author.id === userId);
+  if (userMessages.size > 0) {
+    await channel.bulkDelete(userMessages, true).catch(() => {});
+  }
+}
+
+// دالة Timeout للعقاب
+async function timeoutMember(guild, userId, duration, reason) {
+  try {
+    const member = await guild.members.fetch(userId);
+    if (member && !member.permissions.has(PermissionsBitField.Flags.Administrator)) {
+      await member.timeout(duration, reason);
+    }
+  } catch (err) {
+    console.error('Timeout failed:', err);
+  }
+}
+
+// ================== Event: messageCreate ==================
+client.on('messageCreate', async (message) => {
+  if (message.author.bot || !message.guild) return;
+
+  const content = message.content;
 
   // 1️⃣ منع @everyone و @here
   if (message.mentions.everyone) {
     await message.delete().catch(() => {});
+    await deleteUserMessages(message.channel, message.author.id);
+    await timeoutMember(message.guild, message.author.id, 86400000, 'إرسال @everyone');
     return;
   }
 
   // 2️⃣ الروابط
   if (/https?:\/\/|discord\.gg/i.test(content)) {
     await message.delete().catch(() => {});
+    await deleteUserMessages(message.channel, message.author.id);
     await timeoutMember(message.guild, message.author.id, 86400000, 'إرسال روابط ممنوعة');
     return;
   }
 
-  // 3️⃣ كابيتال
+  // 3️⃣ الكابيتال
   const lettersOnly = content.replace(/[^a-zA-Zأ-ي]/g, '');
   const capsCount = (lettersOnly.match(/[A-Zأ-ي]/g) || []).length;
   const capsPercentage = lettersOnly.length > 0 ? (capsCount / lettersOnly.length) * 100 : 0;
   if (capsPercentage > CAPS_PERCENTAGE_LIMIT) {
     await message.delete().catch(() => {});
+    await deleteUserMessages(message.channel, message.author.id);
+    await timeoutMember(message.guild, message.author.id, 86400000, 'إرسال رسائل بحروف كابيتال مفرطة');
     return;
   }
 
@@ -366,6 +399,8 @@ if (message.author.bot || !message.guild) return;
   const emojiCount = (message.content.match(/<a?:.+?:\d+>|[\uD800-\uDBFF][\uDC00-\uDFFF]/g) || []).length;
   if (emojiCount >= EMOJI_SPAM_LIMIT) {
     await message.delete().catch(() => {});
+    await deleteUserMessages(message.channel, message.author.id);
+    await timeoutMember(message.guild, message.author.id, 86400000, 'سبام إيموجي');
     return;
   }
 
@@ -378,9 +413,12 @@ if (message.author.bot || !message.guild) return;
 
   if (updated.length >= SPAM_LIMIT) {
     await message.delete().catch(() => {});
+    await deleteUserMessages(message.channel, message.author.id);
     await timeoutMember(message.guild, message.author.id, 86400000, 'سبام رسائل');
     return;
   }
+});
+
 
 if (!message.content.startsWith(prefix)) return;
 
@@ -490,20 +528,22 @@ client.on('interactionCreate', async (interaction) => {
     return sendBoth(`✅ تم إعطاء ${member.user.tag} تايم آوت.`, `✅ Timeout given to ${member.user.tag}.`);
   }
 
-  if (command === 'help' || command === 'مساعدة') {
-    await message.delete().catch(() => {});
-    return message.channel.send(`
+if (command === 'help' || command === 'مساعدة') {
+  await message.delete().catch(() => {});
+  return message.channel.send(`
 🔧 **Available Commands | الأوامر المتاحة:**
-\`&ping 
-\`&اقفل / &افتح
-\`&امسح 10
-\`&نشر @message
-\`&كيك @user
-\`&باند @user
-\`&فك-باند @user 
-\`&تايم-اوت @user 60000
-    `);
-  }
+
+\`&ping\`  
+\`&اقفل / &افتح\`  
+\`&امسح 10\`  
+\`&نشر @message\`  
+\`&كيك @user\`  
+\`&باند @user\`  
+\`&فك-باند @user\`  
+\`&تايم-اوت @user 60000\`
+  `);
+}
+
 });
 
 
@@ -790,3 +830,4 @@ client.on('inviteDelete', async invite => {
 
 // === تسجيل الدخول ===
 client.login(TOKEN);
+
