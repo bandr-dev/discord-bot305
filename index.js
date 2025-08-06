@@ -24,7 +24,7 @@ const client = new Client({
 const prefix = '&';
 const invites = new Map();
 
-// === قنوات اللوق + قناة الحماية (عدل الـ IDs حسب سيرفرك) ===
+// ==================== [ إعدادات القنوات والرتب ] ====================
 const logChannels = {
   banLogChannelId: '1196375859104317461',
   unbanLogChannelId: '1196376525461786734',
@@ -41,30 +41,250 @@ const logChannels = {
   messageUpdateLogChannelId: '1196376203460870195',
   timeoutLogChannelId: '1196375994232225802',
   kickLogChannelId: '1196376279646228511',
-  protectionLogChannelId: '1196376000000000000', // حط هنا ايدى قناة الحماية
-  inviteLogChannelId: '1196376100000000000', // قناة لوق الدعوات
-  guildUpdateLogChannelId: '1196376110000000000', // قناة تعديل إعدادات السيرفر
-  voiceMoveLogChannelId: '1196376120000000000',
-  voiceDisconnectLogChannelId: '1196376130000000000',
-  voiceMuteLogChannelId: '1196376140000000000',
+  protectionLogChannelId: '1196376675055845426',
+  inviteLogChannelId: '1196376497338986517',
+  guildUpdateLogChannelId: '1209859968560537620',
+  voiceMoveLogChannelId: '1196376044144439497',
+  voiceDisconnectLogChannelId: '1196376580193271838',
+  voiceMuteLogChannelId: '1196376116248707072',
 };
 
-// === عند تشغيل البوت ===
+const roleIds = {
+  fullAccess: '1209871038284832908',
+  mediumAccess: '1195472593541673031',
+};
+
+const badWords = [
+  'كلب','قحبة','خنيث','حقير','زق','يلعن','يا ابن','عاهرة','وسخ','نجس','عرص','متناك','متحول','تف عليك','تفو','قواد','شرموطة','منيوك','منيك','كسمك','كس اختك','حيوان','مخنث','شرموط','لوطي','كس امك','انيكك','افضحك','زامل',
+  'fuck','bitch','asshole','bastard','slut','whore','dick','pussy','faggot','motherfucker','cunt','nigger','retard','suck','cum','nigga','blowjob','rape','molest','pedo','porn','sex','dildo','cock','boobs','tits','jerk','anal'
+];
+
+const EMOJI_SPAM_LIMIT = 10;
+const MENTION_SPAM_LIMIT = 5;
+const CAPS_PERCENTAGE_LIMIT = 70;
+const SPAM_LIMIT = 5;
+const TIME_WINDOW = 5000;
+const MAX_ACTIONS = 3;
+const ACTION_RESET_TIME = 10000;
+
+const invitesMap = new Map();
+const userMessages = new Map();
+const actionTracker = new Map();
+
+// ==================== [ دوال مساعدة ] ====================
+function createLogEmbed(title, description, color = 'Grey') {
+  return new EmbedBuilder()
+    .setTitle(title)
+    .setDescription(description)
+    .setColor(color)
+    .setTimestamp();
+}
+
+async function hasPermission(member, command) {
+  await member.fetch(); // تأكد من تحميل البيانات
+  const hasFull = member.roles.cache.has(roleIds.fullAccess);
+  const hasMedium = member.roles.cache.has(roleIds.mediumAccess);
+
+  const forbiddenForFull = ['باند', 'كيك', 'مانج-السيرفر'];
+  const forbiddenForMedium = ['باند', 'كيك', 'امسح', 'تايم-اوت', 'مانج-السيرفر'];
+
+  if (hasFull) {
+    if (forbiddenForFull.includes(command)) return false;
+    return true;
+  }
+  if (hasMedium) {
+    if (forbiddenForMedium.includes(command)) return false;
+    return true;
+  }
+  return false;
+}
+
+
+function trackAction(userId, type) {
+  const key = `${userId}_${type}`;
+  const data = actionTracker.get(key) || { count: 0, last: Date.now() };
+  const now = Date.now();
+
+  if (now - data.last < TIME_WINDOW) {
+    data.count++;
+  } else {
+    data.count = 1;
+  }
+  data.last = now;
+  actionTracker.set(key, data);
+  return data.count;
+}
+
+async function timeoutMember(guild, userId, duration, reason) {
+  try {
+    const member = await guild.members.fetch(userId);
+    if (member && !member.permissions.has(PermissionsBitField.Flags.Administrator)) {
+      await member.timeout(duration, reason);
+    }
+  } catch (err) {
+    console.error('Timeout failed:', err);
+  }
+}
+
+async function punishUser(guild, userId, reason) {
+  try {
+    const member = await guild.members.fetch(userId);
+    if (member && !member.permissions.has(PermissionsBitField.Flags.Administrator)) {
+      await member.roles.set([]).catch(() => {});
+      const protectionChannel = guild.channels.cache.get(logChannels.protectionLogChannelId);
+      protectionChannel?.send(`🚨 **${member.user.tag}** تم سحب صلاحياته بسبب: ${reason}`);
+    }
+  } catch (err) {
+    console.error('Failed to punish user:', err);
+  }
+}
+
+// ==================== [ Events ] ====================
 client.once('ready', async () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
-
-  // تحميل الدعوات لكل سيرفر
   for (const guild of client.guilds.cache.values()) {
     try {
       const firstInvites = await guild.invites.fetch();
-      invites.set(guild.id, new Map(firstInvites.map(inv => [inv.code, inv.uses])));
-      console.log(`✅ Loaded invites for ${guild.name}`);
+      invitesMap.set(guild.id, new Map(firstInvites.map(inv => [inv.code, inv.uses])));
     } catch (error) {
       console.log(`❌ Couldn't fetch invites for ${guild.name}: ${error.message}`);
     }
   }
 });
 
+// (بقية messageCreate و الأوامر موجودة فوق)
+
+client.on('guildBanAdd', async (ban) => {
+  const channel = client.channels.cache.get(logChannels.banLogChannelId);
+  if (!channel) return;
+  const fetchedLogs = await ban.guild.fetchAuditLogs({ type: AuditLogEvent.MemberBanAdd, limit: 1 });
+  const banLog = fetchedLogs.entries.find(entry => entry.target.id === ban.user.id);
+  const executor = banLog?.executor;
+  const reason = banLog?.reason || 'لم يتم تحديد السبب';
+  const embed = createLogEmbed('🚫 تم حظر عضو', `تم حظر العضو **${ban.user.tag}** بواسطة ${executor?.tag || 'شخص مجهول'}\n**السبب:** ${reason}`, 'Red');
+  channel.send({ embeds: [embed] });
+});
+
+client.on('guildBanRemove', async (ban) => {
+  const channel = client.channels.cache.get(logChannels.unbanLogChannelId);
+  if (!channel) return;
+  const fetchedLogs = await ban.guild.fetchAuditLogs({ type: AuditLogEvent.MemberBanRemove, limit: 1 });
+  const unbanLog = fetchedLogs.entries.find(entry => entry.target.id === ban.user.id);
+  const executor = unbanLog?.executor;
+  const reason = unbanLog?.reason || 'لم يتم تحديد السبب';
+  const embed = createLogEmbed('✅ تم رفع الحظر', `تم فك الحظر عن العضو **${ban.user.tag}** بواسطة ${executor?.tag || 'شخص مجهول'}\n**السبب:** ${reason}`, 'Green');
+  channel.send({ embeds: [embed] });
+});
+
+client.on('roleDelete', async role => {
+  const channel = client.channels.cache.get(logChannels.roleDeleteLogChannelId);
+  if (!channel) return;
+  const auditLogs = await role.guild.fetchAuditLogs({ type: AuditLogEvent.RoleDelete, limit: 1 });
+  const entry = auditLogs.entries.first();
+  const executor = entry?.executor;
+  const reason = entry?.reason || 'لم يتم تحديد السبب';
+  const embed = createLogEmbed('⚠️ تم حذف رتبة', `تم حذف رتبة **${role.name}** بواسطة ${executor ? executor.tag : 'شخص مجهول'}\n**السبب:** ${reason}`, 'DarkRed');
+  channel.send({ embeds: [embed] });
+
+  if (executor && !executor.permissions?.has(PermissionsBitField.Flags.Administrator)) {
+    try {
+      await role.guild.members.cache.get(executor.id)?.roles.cache.forEach(role => {
+        if (role.editable) role.delete().catch(() => {});
+      });
+      const protectionChannel = role.guild.channels.cache.get(logChannels.protectionLogChannelId);
+      protectionChannel?.send(`⚠️ تم سحب صلاحيات ${executor.tag} بسبب حذف رتبة بدون إذن.`);
+    } catch {}
+  }
+});
+
+client.on('roleCreate', async role => {
+  const channel = client.channels.cache.get(logChannels.roleCreateLogChannelId);
+  if (!channel) return;
+  const auditLogs = await role.guild.fetchAuditLogs({ type: AuditLogEvent.RoleCreate, limit: 1 });
+  const executor = auditLogs.entries.first()?.executor;
+  const reason = auditLogs.entries.first()?.reason || 'لم يتم تحديد السبب';
+  const embed = createLogEmbed('✅ تم إنشاء رتبة', `تم إنشاء رتبة **${role.name}** بواسطة ${executor ? executor.tag : 'شخص مجهول'}\n**السبب:** ${reason}`, 'Green');
+  channel.send({ embeds: [embed] });
+});
+
+client.on('roleUpdate', async (oldRole, newRole) => {
+  const channel = client.channels.cache.get(logChannels.roleUpdateLogChannelId);
+  if (!channel) return;
+  const auditLogs = await newRole.guild.fetchAuditLogs({ type: AuditLogEvent.RoleUpdate, limit: 1 });
+  const executor = auditLogs.entries.first()?.executor;
+  const reason = auditLogs.entries.first()?.reason || 'لم يتم تحديد السبب';
+  const embed = createLogEmbed('⚠️ تم تعديل رتبة', `تم تعديل رتبة **${oldRole.name}** بواسطة ${executor ? executor.tag : 'شخص مجهول'}\n**السبب:** ${reason}`, 'Yellow');
+  channel.send({ embeds: [embed] });
+});
+
+client.on('channelDelete', async channelDeleted => {
+  const channel = client.channels.cache.get(logChannels.channelDeleteLogChannelId);
+  if (!channel) return;
+  const auditLogs = await channelDeleted.guild.fetchAuditLogs({ type: AuditLogEvent.ChannelDelete, limit: 1 });
+  const entry = auditLogs.entries.first();
+  const executor = entry?.executor;
+  const reason = entry?.reason || 'لم يتم تحديد السبب';
+  const embed = createLogEmbed('⚠️ تم حذف روم', `تم حذف روم **${channelDeleted.name}** بواسطة ${executor ? executor.tag : 'شخص مجهول'}\n**السبب:** ${reason}`, 'DarkRed');
+  channel.send({ embeds: [embed] });
+
+  if (executor && !executor.permissions?.has(PermissionsBitField.Flags.Administrator)) {
+    try {
+      await channelDeleted.guild.members.cache.get(executor.id)?.roles.cache.forEach(role => {
+        if (role.editable) role.delete().catch(() => {});
+      });
+      const protectionChannel = channelDeleted.guild.channels.cache.get(logChannels.protectionLogChannelId);
+      protectionChannel?.send(`⚠️ تم سحب صلاحيات ${executor.tag} بسبب حذف روم بدون إذن.`);
+    } catch {}
+  }
+});
+
+client.on('channelCreate', async channelCreated => {
+  const channel = client.channels.cache.get(logChannels.channelCreateLogChannelId);
+  if (!channel) return;
+  const auditLogs = await channelCreated.guild.fetchAuditLogs({ type: AuditLogEvent.ChannelCreate, limit: 1 });
+  const executor = auditLogs.entries.first()?.executor;
+  const embed = createLogEmbed('✅ تم إنشاء روم', `تم إنشاء روم **${channelCreated.name}** بواسطة ${executor ? executor.tag : 'شخص مجهول'}.`, 'Green');
+  channel.send({ embeds: [embed] });
+
+  if (executor && trackAction(executor.id, 'channelCreate') >= MAX_ACTIONS) {
+    await punishUser(channelCreated.guild, executor.id, 'إنشاء رومات بشكل مفرط');
+  }
+});
+
+client.on('channelUpdate', async (oldChannel, newChannel) => {
+  const channel = client.channels.cache.get(logChannels.channelUpdateLogChannelId);
+  if (!channel) return;
+  const auditLogs = await newChannel.guild.fetchAuditLogs({ type: AuditLogEvent.ChannelUpdate, limit: 1 });
+  const executor = auditLogs.entries.first()?.executor;
+  const embed = createLogEmbed('⚠️ تم تعديل روم', `تم تعديل روم **${oldChannel.name}** بواسطة ${executor ? executor.tag : 'شخص مجهول'}.`, 'Yellow');
+  channel.send({ embeds: [embed] });
+});
+
+client.on('guildMemberUpdate', async (oldMember, newMember) => {
+  if (oldMember.nickname !== newMember.nickname) {
+    const channel = client.channels.cache.get(logChannels.nicknameUpdateLogChannelId);
+    if (!channel) return;
+    const auditLogs = await newMember.guild.fetchAuditLogs({ type: AuditLogEvent.MemberUpdate, limit: 1 });
+    const executor = auditLogs.entries.first()?.executor;
+    const embed = createLogEmbed('⚠️ تم تغيير الاسم المستعار', `تم تغيير الاسم المستعار للعضو **${newMember.user.tag}** بواسطة ${executor ? executor.tag : 'شخص مجهول'}.\n\n**من:** ${oldMember.nickname || 'لا يوجد'}\n**إلى:** ${newMember.nickname || 'لا يوجد'}`, 'Yellow');
+    channel.send({ embeds: [embed] });
+  }
+
+  const oldTimeout = oldMember.communicationDisabledUntilTimestamp;
+  const newTimeout = newMember.communicationDisabledUntilTimestamp;
+  if (oldTimeout !== newTimeout) {
+    const channel = client.channels.cache.get(logChannels.timeoutLogChannelId);
+    if (!channel) return;
+    if (newTimeout && (newTimeout > Date.now())) {
+      const until = new Date(newTimeout).toLocaleString();
+      const embed = createLogEmbed('⏳ تم إعطاء تايم أوت', `تم إعطاء تايم أوت للعضو **${newMember.user.tag}** حتى ${until}.`, 'Orange');
+      channel.send({ embeds: [embed] });
+    } else {
+      const embed = createLogEmbed('⏳ تم رفع التايم أوت', `تم رفع التايم أوت عن العضو **${newMember.user.tag}**.`, 'Green');
+      channel.send({ embeds: [embed] });
+    }
+  }
+});
 // === ترحيب + اسم الدعوة ===
 client.on('guildMemberAdd', async member => {
   try {
@@ -89,19 +309,131 @@ client.on('guildMemberAdd', async member => {
   }
 });
 
+// دالة تتحقق الصلاحيات حسب الرتبة والأمر
+function hasPermission(member, command) {
+  const hasFull = member.roles.cache.has(roleIds.fullAccess);
+  const hasMedium = member.roles.cache.has(roleIds.mediumAccess);
+
+  // أوامر ممنوعة لـ Full access:
+  const forbiddenForFull = ['باند', 'كيك', 'مانج-السيرفر'];
+
+  // أوامر ممنوعة لـ Medium access:
+  const forbiddenForMedium = ['باند', 'كيك', 'امسح', 'تايم-اوت', 'مانج-السيرفر'];
+
+  if (hasFull) {
+    if (forbiddenForFull.includes(command)) return false;
+    return true;
+  }
+
+  if (hasMedium) {
+    if (forbiddenForMedium.includes(command)) return false;
+    return true;
+  }
+
+  // لأي عضو بدون رتبة مخصصة، ممنوع كل شيء
+  return false;
+}
+
 // === أوامر الإدارة ===
 client.on('messageCreate', async (message) => {
-  if (message.author.bot || !message.content.startsWith(prefix)) return;
+if (message.author.bot || !message.guild) return;
+
+  const content = message.content.toLowerCase();
+
+  // 1️⃣ منع @everyone و @here
+  if (message.mentions.everyone) {
+    await message.delete().catch(() => {});
+    return;
+  }
+
+  // 2️⃣ الروابط
+  if (/https?:\/\/|discord\.gg/i.test(content)) {
+    await message.delete().catch(() => {});
+    await timeoutMember(message.guild, message.author.id, 86400000, 'إرسال روابط ممنوعة');
+    return;
+  }
+
+  // 3️⃣ كابيتال
+  const lettersOnly = content.replace(/[^a-zA-Zأ-ي]/g, '');
+  const capsCount = (lettersOnly.match(/[A-Zأ-ي]/g) || []).length;
+  const capsPercentage = lettersOnly.length > 0 ? (capsCount / lettersOnly.length) * 100 : 0;
+  if (capsPercentage > CAPS_PERCENTAGE_LIMIT) {
+    await message.delete().catch(() => {});
+    return;
+  }
+
+  // 4️⃣ سبام الإيموجي
+  const emojiCount = (message.content.match(/<a?:.+?:\d+>|[\uD800-\uDBFF][\uDC00-\uDFFF]/g) || []).length;
+  if (emojiCount >= EMOJI_SPAM_LIMIT) {
+    await message.delete().catch(() => {});
+    return;
+  }
+
+  // 5️⃣ سبام الرسائل
+  const now = Date.now();
+  const timestamps = userMessages.get(message.author.id) || [];
+  const updated = timestamps.filter(t => now - t < TIME_WINDOW);
+  updated.push(now);
+  userMessages.set(message.author.id, updated);
+
+  if (updated.length >= SPAM_LIMIT) {
+    await message.delete().catch(() => {});
+    await timeoutMember(message.guild, message.author.id, 86400000, 'سبام رسائل');
+    return;
+  }
+
+if (!message.content.startsWith(prefix)) return;
+
+
   const args = message.content.slice(prefix.length).trim().split(/ +/);
   const command = args.shift().toLowerCase();
 
-  if (!message.member.permissions.has(PermissionsBitField.Flags.ManageGuild)) {
-    return message.reply('❌ لا تملك صلاحيات | You lack permission.');
+  if (!message.member) return;
+
+  if (!hasPermission(message.member, command)) {
+    return message.reply('❌ ما عندك صلاحية استخدام هذا الأمر.');
   }
 
-  const sendBoth = (msgAr, msgEn) => message.channel.send(`**${msgAr}**\n${msgEn}`);
+  const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 
-  if (command === 'ping') return sendBoth('🏓 البوت شغال تمام!', '🏓 Bot is up and running!');
+if (command === 'نشر') {
+    const content = message.content.slice(prefix.length + command.length).trim();
+    if (!content) return message.reply('❌ اكتب الرسالة بعد الأمر.');
+
+    await message.delete().catch(() => {}); // حذف رسالة المستخدم
+
+    const embed = new EmbedBuilder()
+        .setAuthor({ name: message.guild.name, iconURL: message.guild.iconURL() })
+        .setDescription(content)
+        .setColor('#2F3136')
+        .setTimestamp();
+
+    const row = new ActionRowBuilder()
+        .addComponents(
+            new ButtonBuilder()
+                .setCustomId('accept_rules')
+                .setLabel('✅ أوافق على القوانين')
+                .setStyle(ButtonStyle.Success)
+        );
+
+    await message.channel.send({ embeds: [embed], components: [row] });
+    return;
+}
+
+// التفاعل مع زر الموافقة
+client.on('interactionCreate', async (interaction) => {
+    if (!interaction.isButton()) return;
+
+    if (interaction.customId === 'accept_rules') {
+        await interaction.reply({ content: `✅ لقد وافقت على القوانين بنجاح.`, ephemeral: true });
+        // تقدر هنا تعطيه رتبة معينة إذا تبي
+        // await interaction.member.roles.add('ROLE_ID');
+    }
+});
+
+  if (command === 'ping') {
+    return sendBoth('🏓 البوت شغال تمام!', '🏓 Bot is up and running!');
+  }
 
   if (command === 'اقفل') {
     await message.channel.permissionOverwrites.edit(message.guild.roles.everyone, { SendMessages: false });
@@ -137,6 +469,17 @@ client.on('messageCreate', async (message) => {
     return sendBoth(`✅ تم حظر ${member.user.tag}.`, `✅ Banned ${member.user.tag}.`);
   }
 
+  if (command === 'فك-باند') {
+    const userId = args[0]?.replace(/[<@!>]/g, '');
+    if (!userId) return sendBoth('❌ أدخل ID العضو لفك الحظر.', '❌ Provide a user ID to unban.');
+    try {
+      await message.guild.bans.remove(userId);
+      return sendBoth(`✅ تم فك الحظر عن العضو برقم ${userId}.`, `✅ Unbanned user with ID ${userId}.`);
+    } catch {
+      return sendBoth('❌ لم أتمكن من فك الحظر عن هذا العضو.', '❌ Could not unban this user.');
+    }
+  }
+
   if (command === 'تايم-اوت') {
     const member = message.mentions.members.first();
     const time = parseInt(args[1]);
@@ -148,19 +491,21 @@ client.on('messageCreate', async (message) => {
   }
 
   if (command === 'help' || command === 'مساعدة') {
+    await message.delete().catch(() => {});
     return message.channel.send(`
 🔧 **Available Commands | الأوامر المتاحة:**
-\`&ping\` - Ping البوت  
-\`&اقفل / &افتح\` - Lock / Unlock channel  
-\`&امسح 10\` - Delete 10 messages  
-\`&كيك @user\` - Kick user  
-\`&باند @user\` - Ban user  
-\`&تايم-اوت @user 60000\` - Timeout user (ms)
+\`&ping 
+\`&اقفل / &افتح
+\`&امسح 10
+\`&نشر @message
+\`&كيك @user
+\`&باند @user
+\`&فك-باند @user 
+\`&تايم-اوت @user 60000
     `);
   }
-
-  sendBoth('❓ الأمر غير معروف.', '❓ Unknown command.');
 });
+
 
 // === نظام اللوقز ===
 
@@ -177,7 +522,11 @@ function createLogEmbed(title, description, color = 'Grey') {
 client.on('guildBanAdd', async (ban) => {
   const channel = client.channels.cache.get(logChannels.banLogChannelId);
   if (!channel) return;
-  const embed = createLogEmbed('🚫 تم حظر عضو', `تم حظر العضو **${ban.user.tag}** من السيرفر.`, 'Red');
+  const fetchedLogs = await ban.guild.fetchAuditLogs({ type: AuditLogEvent.MemberBanAdd, limit: 1 });
+  const banLog = fetchedLogs.entries.find(entry => entry.target.id === ban.user.id);
+  const executor = banLog?.executor;
+  const reason = banLog?.reason || 'لم يتم تحديد السبب';
+  const embed = createLogEmbed('🚫 تم حظر عضو', `تم حظر العضو **${ban.user.tag}** بواسطة ${executor?.tag || 'شخص مجهول'}\n**السبب:** ${reason}`, 'Red');
   channel.send({ embeds: [embed] });
 });
 
@@ -185,15 +534,30 @@ client.on('guildBanAdd', async (ban) => {
 client.on('guildBanRemove', async (ban) => {
   const channel = client.channels.cache.get(logChannels.unbanLogChannelId);
   if (!channel) return;
-  const embed = createLogEmbed('✅ تم رفع الحظر', `تم فك الحظر عن العضو **${ban.user.tag}**.`, 'Green');
+  const fetchedLogs = await ban.guild.fetchAuditLogs({ type: AuditLogEvent.MemberBanRemove, limit: 1 });
+  const unbanLog = fetchedLogs.entries.find(entry => entry.target.id === ban.user.id);
+  const executor = unbanLog?.executor;
+  const reason = unbanLog?.reason || 'لم يتم تحديد السبب';
+  const embed = createLogEmbed('✅ تم رفع الحظر', `تم فك الحظر عن العضو **${ban.user.tag}** بواسطة ${executor?.tag || 'شخص مجهول'}\n**السبب:** ${reason}`, 'Green');
   channel.send({ embeds: [embed] });
 });
 
 // خروج أو طرد عضو
-client.on('guildMemberRemove', member => {
+client.on('guildMemberRemove', async member => {
+  const fetchedLogs = await member.guild.fetchAuditLogs({ type: AuditLogEvent.MemberKick, limit: 1 });
+  const kickLog = fetchedLogs.entries.find(entry => entry.target.id === member.id);
+  const executor = kickLog?.executor;
+  const reason = kickLog?.reason || 'لم يتم تحديد السبب';
+
   const channel = client.channels.cache.get(logChannels.memberRemoveLogChannelId);
   if (!channel) return;
-  const embed = createLogEmbed('👢 عضو خرج أو تم طرده', `العضو **${member.user.tag}** خرج أو تم طرده.`, 'Orange');
+
+  let description = `👢 العضو **${member.user.tag}** خرج أو تم طرده.`;
+  if (kickLog) {
+    description = `👢 تم طرد العضو **${member.user.tag}** بواسطة ${executor?.tag || 'شخص مجهول'}\n**السبب:** ${reason}`;
+  }
+
+  const embed = createLogEmbed('👢 عضو خرج أو تم طرده', description, 'Orange');
   channel.send({ embeds: [embed] });
 });
 
@@ -202,21 +566,20 @@ client.on('roleDelete', async role => {
   const channel = client.channels.cache.get(logChannels.roleDeleteLogChannelId);
   if (!channel) return;
   const auditLogs = await role.guild.fetchAuditLogs({ type: AuditLogEvent.RoleDelete, limit: 1 });
-  const executor = auditLogs.entries.first()?.executor;
-  const embed = createLogEmbed('⚠️ تم حذف رتبة', `تم حذف رتبة **${role.name}** بواسطة ${executor ? executor.tag : 'شخص مجهول'}.`, 'DarkRed');
+  const entry = auditLogs.entries.first();
+  const executor = entry?.executor;
+  const reason = entry?.reason || 'لم يتم تحديد السبب';
+  const embed = createLogEmbed('⚠️ تم حذف رتبة', `تم حذف رتبة **${role.name}** بواسطة ${executor ? executor.tag : 'شخص مجهول'}\n**السبب:** ${reason}`, 'DarkRed');
   channel.send({ embeds: [embed] });
 
-  // حماية حذف الرتب - لو تبي ردع (حذف صلاحيات مثلا)
-  if (executor && !executor.permissions.has(PermissionsBitField.Flags.Administrator)) {
+  if (executor && !executor.permissions?.has(PermissionsBitField.Flags.Administrator)) {
     try {
       await role.guild.members.cache.get(executor.id)?.roles.cache.forEach(role => {
         if (role.editable) role.delete().catch(() => {});
       });
       const protectionChannel = role.guild.channels.cache.get(logChannels.protectionLogChannelId);
       protectionChannel?.send(`⚠️ تم سحب صلاحيات ${executor.tag} بسبب حذف رتبة بدون إذن.`);
-    } catch {
-      // فشل في الردع، تجاهل
-    }
+    } catch {}
   }
 });
 
@@ -226,7 +589,8 @@ client.on('roleCreate', async role => {
   if (!channel) return;
   const auditLogs = await role.guild.fetchAuditLogs({ type: AuditLogEvent.RoleCreate, limit: 1 });
   const executor = auditLogs.entries.first()?.executor;
-  const embed = createLogEmbed('✅ تم إنشاء رتبة', `تم إنشاء رتبة **${role.name}** بواسطة ${executor ? executor.tag : 'شخص مجهول'}.`, 'Green');
+  const reason = auditLogs.entries.first()?.reason || 'لم يتم تحديد السبب';
+  const embed = createLogEmbed('✅ تم إنشاء رتبة', `تم إنشاء رتبة **${role.name}** بواسطة ${executor ? executor.tag : 'شخص مجهول'}\n**السبب:** ${reason}`, 'Green');
   channel.send({ embeds: [embed] });
 });
 
@@ -236,7 +600,8 @@ client.on('roleUpdate', async (oldRole, newRole) => {
   if (!channel) return;
   const auditLogs = await newRole.guild.fetchAuditLogs({ type: AuditLogEvent.RoleUpdate, limit: 1 });
   const executor = auditLogs.entries.first()?.executor;
-  const embed = createLogEmbed('⚠️ تم تعديل رتبة', `تم تعديل رتبة **${oldRole.name}** بواسطة ${executor ? executor.tag : 'شخص مجهول'}.`, 'Yellow');
+  const reason = auditLogs.entries.first()?.reason || 'لم يتم تحديد السبب';
+  const embed = createLogEmbed('⚠️ تم تعديل رتبة', `تم تعديل رتبة **${oldRole.name}** بواسطة ${executor ? executor.tag : 'شخص مجهول'}\n**السبب:** ${reason}`, 'Yellow');
   channel.send({ embeds: [embed] });
 });
 
@@ -245,23 +610,23 @@ client.on('channelDelete', async channelDeleted => {
   const channel = client.channels.cache.get(logChannels.channelDeleteLogChannelId);
   if (!channel) return;
   const auditLogs = await channelDeleted.guild.fetchAuditLogs({ type: AuditLogEvent.ChannelDelete, limit: 1 });
-  const executor = auditLogs.entries.first()?.executor;
-  const embed = createLogEmbed('⚠️ تم حذف روم', `تم حذف روم **${channelDeleted.name}** بواسطة ${executor ? executor.tag : 'شخص مجهول'}.`, 'DarkRed');
+  const entry = auditLogs.entries.first();
+  const executor = entry?.executor;
+  const reason = entry?.reason || 'لم يتم تحديد السبب';
+  const embed = createLogEmbed('⚠️ تم حذف روم', `تم حذف روم **${channelDeleted.name}** بواسطة ${executor ? executor.tag : 'شخص مجهول'}\n**السبب:** ${reason}`, 'DarkRed');
   channel.send({ embeds: [embed] });
 
-  // حماية حذف الرومات
-  if (executor && !executor.permissions.has(PermissionsBitField.Flags.Administrator)) {
+  if (executor && !executor.permissions?.has(PermissionsBitField.Flags.Administrator)) {
     try {
       await channelDeleted.guild.members.cache.get(executor.id)?.roles.cache.forEach(role => {
         if (role.editable) role.delete().catch(() => {});
       });
       const protectionChannel = channelDeleted.guild.channels.cache.get(logChannels.protectionLogChannelId);
       protectionChannel?.send(`⚠️ تم سحب صلاحيات ${executor.tag} بسبب حذف روم بدون إذن.`);
-    } catch {
-      // تجاهل الفشل
-    }
+    } catch {}
   }
 });
+
 
 // إنشاء روم
 client.on('channelCreate', async channelCreated => {
@@ -414,6 +779,7 @@ client.on('inviteDelete', async invite => {
 
   const embed = createLogEmbed('➖ تم حذف دعوة', `تم حذف دعوة برابط: https://discord.gg/${invite.code}`, 'Red');
   channel.send({ embeds: [embed] });
+
 });
 
 // === حماية أساسية ضد حذف الرتب والرومات بدون إذن (تطبق في أحداث roleDelete و channelDelete سابقاً) ===
