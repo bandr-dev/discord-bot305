@@ -296,13 +296,14 @@ client.on('messageCreate', async (message) => {
     return sendBoth(`✅ تم إعطاء ${member.user.tag} تايم أوت.`, `✅ Timeout given to ${member.user.tag}.`);
   }
 
-  if (command === 'نشر') {
-  // أمر خاص بنشر القوانين مع زر الموافقة
+  const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+
+if (command === 'نشر') {
   const content = args.join(' ');
   if (!content) return message.reply('❌ اكتب القوانين بعد الأمر.');
-  
+
   await message.delete().catch(() => {});
-  
+
   const embed = new EmbedBuilder()
     .setAuthor({ name: message.guild.name, iconURL: message.guild.iconURL() || null })
     .setDescription(content)
@@ -319,10 +320,9 @@ client.on('messageCreate', async (message) => {
   message.channel.send({ embeds: [embed], components: [row] });
 
 } else if (command === 'send') {
-  // أمر عام لنشر رسالة بدون زر
   const content = args.join(' ');
   if (!content) return message.reply('❌ اكتب الرسالة بعد الأمر.');
-  
+
   await message.delete().catch(() => {});
 
   const embed = new EmbedBuilder()
@@ -333,6 +333,7 @@ client.on('messageCreate', async (message) => {
 
   message.channel.send({ embeds: [embed] });
 }
+
     await message.channel.send({ embeds: [embed], components: [row] });
     return;
   }
@@ -538,6 +539,7 @@ client.once('ready', () => {
 });
 
 client.login(TOKEN);
+
 
 
 
