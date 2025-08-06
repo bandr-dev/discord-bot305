@@ -60,8 +60,6 @@ const badWords = [
 
 // ================== Full Protection System ==================
 
-const { PermissionsBitField, EmbedBuilder, AuditLogEvent } = require('discord.js');
-
 const OWNER_ID = '1114668397725220954';
 const LOG_CHANNEL_ID = '1196376675055845426'; // Replace with your log channel ID
 
@@ -517,5 +515,6 @@ client.once('ready', () => {
 });
 
 client.login(TOKEN);
+
 
 
