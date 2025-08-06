@@ -63,9 +63,9 @@ const badWords = [
 const OWNER_ID = '1114668397725220954';
 const LOG_CHANNEL_ID = '1196376675055845426'; // Replace with your log channel ID
 
-const EMOJI_SPAM_LIMIT = 5;
+const EMOJI_SPAM_LIMIT = 10;
 const CAPS_PERCENTAGE_LIMIT = 70;
-const SPAM_LIMIT = 5;
+const SPAM_LIMIT = 10;
 const TIME_WINDOW = 10000;
 
 
@@ -534,6 +534,7 @@ client.once('ready', () => {
 });
 
 client.login(TOKEN);
+
 
 
 
