@@ -297,20 +297,42 @@ client.on('messageCreate', async (message) => {
   }
 
   if (command === 'نشر') {
-    const content = args.join(' ');
-    if (!content) return message.reply('❌ اكتب الرسالة بعد الأمر.');
-    await message.delete().catch(() => {});
-    const embed = new EmbedBuilder()
-      .setAuthor({ name: message.guild.name, iconURL: message.guild.iconURL() })
-      .setDescription(content)
-      .setColor('#2F3136')
-      .setTimestamp();
-    const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId('accept_rules')
-        .setLabel('✅ أوافق على القوانين')
-        .setStyle(ButtonStyle.Success)
-    );
+  // أمر خاص بنشر القوانين مع زر الموافقة
+  const content = args.join(' ');
+  if (!content) return message.reply('❌ اكتب القوانين بعد الأمر.');
+  
+  await message.delete().catch(() => {});
+  
+  const embed = new EmbedBuilder()
+    .setAuthor({ name: message.guild.name, iconURL: message.guild.iconURL() || null })
+    .setDescription(content)
+    .setColor('#2F3136')
+    .setTimestamp();
+
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId('accept_rules')
+      .setLabel('✅ أوافق على القوانين')
+      .setStyle(ButtonStyle.Success)
+  );
+
+  message.channel.send({ embeds: [embed], components: [row] });
+
+} else if (command === 'send') {
+  // أمر عام لنشر رسالة بدون زر
+  const content = args.join(' ');
+  if (!content) return message.reply('❌ اكتب الرسالة بعد الأمر.');
+  
+  await message.delete().catch(() => {});
+
+  const embed = new EmbedBuilder()
+    .setAuthor({ name: message.guild.name, iconURL: message.guild.iconURL() || null })
+    .setDescription(content)
+    .setColor('#2F3136')
+    .setTimestamp();
+
+  message.channel.send({ embeds: [embed] });
+}
     await message.channel.send({ embeds: [embed], components: [row] });
     return;
   }
@@ -324,6 +346,7 @@ client.on('messageCreate', async (message) => {
 \`&اقفل / &افتح\`
 \`&امسح 10\`
 \`&نشر @message\`
+\`&send @message\`
 \`&كيك @user\`
 \`&باند @user\`
 \`&فك-باند @user\`
@@ -515,6 +538,7 @@ client.once('ready', () => {
 });
 
 client.login(TOKEN);
+
 
 
 
