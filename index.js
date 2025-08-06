@@ -26,7 +26,6 @@ const invites = new Map();
 const invitesMap = new Map();
 const userMessages = new Map();
 const actionTracker = new Map();
-const TIME_WINDOW = 5000;
 const MAX_ACTIONS = 3;
 
 const logChannels = {
@@ -59,11 +58,20 @@ const badWords = [
   'fuck','bitch','slut','dick','pussy','rape','porn','sex','nigga','cum'
 ];
 
+// ================== Full Protection System ==================
+
+const { PermissionsBitField, EmbedBuilder, AuditLogEvent } = require('discord.js');
+
+const OWNER_ID = '1114668397725220954';
+const LOG_CHANNEL_ID = '1196376675055845426'; // Replace with your log channel ID
+
 const EMOJI_SPAM_LIMIT = 5;
-const MENTION_SPAM_LIMIT = 2;
 const CAPS_PERCENTAGE_LIMIT = 70;
 const SPAM_LIMIT = 5;
+const TIME_WINDOW = 5000;
 
+
+// Delete all user messages in a channel (up to 100 messages)
 async function deleteUserMessages(channel, userId) {
   const messages = await channel.messages.fetch({ limit: 100 });
   const userMessages = messages.filter(m => m.author.id === userId);
@@ -72,77 +80,74 @@ async function deleteUserMessages(channel, userId) {
   }
 }
 
+// Timeout punishment
 async function timeoutMember(guild, userId, duration, reason) {
   try {
     const member = await guild.members.fetch(userId);
     if (member && !member.permissions.has(PermissionsBitField.Flags.Administrator)) {
       await member.timeout(duration, reason);
+
+      // Send log to log channel
+      const logChannel = guild.channels.cache.get(LOG_CHANNEL_ID);
+      if (logChannel) {
+        const embed = new EmbedBuilder()
+          .setTitle('🔒 User Timed Out')
+          .setDescription(`User: <@${userId}> has been timed out for **${reason}**.`)
+          .setColor('Orange')
+          .setTimestamp();
+        logChannel.send({ embeds: [embed] });
+      }
     }
   } catch (err) {
     console.error('Timeout failed:', err);
   }
 }
 
-const OWNER_ID = '1114668397725220954'; // ايدي حسابك هنا
-
-client.on('messageCreate', async (message) => {
-  if (message.author.bot || !message.guild || !message.content.startsWith(prefix)) return;
-
-  if (message.author.id === OWNER_ID) {
-    // أنت راعي البوت، تقدر تستخدم كل الأوامر بدون تحقق صلاحيات
-  } else {
-    const args = message.content.slice(prefix.length).trim().split(/ +/);
-    const command = args.shift().toLowerCase();
-    if (!hasPermission(message.member, command)) 
-      return message.reply('❌ ما عندك صلاحية استخدام هذا الأمر.');
-  }
-
-  // باقي تنفيذ الأوامر هنا
-});
-
-// حماية ضد سبام @everyone و @here والروابط والكابيتال والإيموجي والسبام والكلمات البذيئة
+// ================== Anti-Spam & Anti-Link & Anti-Caps ==================
 client.on('messageCreate', async (message) => {
   if (message.author.bot || !message.guild) return;
 
+  if (message.member.permissions.has(PermissionsBitField.Flags.Administrator)) return;
+
   const content = message.content;
 
-  // 1️⃣ @everyone / @here
+  // 1️⃣ Prevent @everyone & @here
   if (message.mentions.everyone) {
     await message.delete().catch(() => {});
     await deleteUserMessages(message.channel, message.author.id);
-    await timeoutMember(message.guild, message.author.id, 86400000, 'منع everyone');
+    await timeoutMember(message.guild, message.author.id, 86400000, 'Mentioning @everyone');
     return;
   }
 
-  // 2️⃣ روابط
+  // 2️⃣ Links
   if (/https?:\/\/|discord\.gg/i.test(content)) {
     await message.delete().catch(() => {});
     await deleteUserMessages(message.channel, message.author.id);
-    await timeoutMember(message.guild, message.author.id, 86400000, 'إرسال روابط ممنوعة');
+    await timeoutMember(message.guild, message.author.id, 86400000, 'Posting links');
     return;
   }
 
-  // 3️⃣ كابيتال بشكل زائد
+  // 3️⃣ Excessive Caps
   const lettersOnly = content.replace(/[^a-zA-Zأ-ي]/g, '');
   const capsCount = (lettersOnly.match(/[A-Zأ-ي]/g) || []).length;
   const capsPercentage = lettersOnly.length > 0 ? (capsCount / lettersOnly.length) * 100 : 0;
   if (capsPercentage > CAPS_PERCENTAGE_LIMIT) {
     await message.delete().catch(() => {});
     await deleteUserMessages(message.channel, message.author.id);
-    await timeoutMember(message.guild, message.author.id, 86400000, 'كابيتال زائد');
+    await timeoutMember(message.guild, message.author.id, 86400000, 'Excessive capitalization');
     return;
   }
 
-  // 4️⃣ إيموجيات كثيرة
-  const emojiCount = (message.content.match(/<a?:.+?:\d+>|[\uD800-\uDBFF][\uDC00-\uDFFF]/g) || []).length;
+  // 4️⃣ Emoji Spam
+  const emojiCount = (content.match(/<a?:.+?:\d+>|[\uD800-\uDBFF][\uDC00-\uDFFF]/g) || []).length;
   if (emojiCount >= EMOJI_SPAM_LIMIT) {
     await message.delete().catch(() => {});
     await deleteUserMessages(message.channel, message.author.id);
-    await timeoutMember(message.guild, message.author.id, 86400000, 'سبام إيموجي');
+    await timeoutMember(message.guild, message.author.id, 86400000, 'Emoji spam');
     return;
   }
 
-  // 5️⃣ سبام رسائل سريع
+  // 5️⃣ Message Spam
   const now = Date.now();
   const timestamps = userMessages.get(message.author.id) || [];
   const updated = timestamps.filter(t => now - t < TIME_WINDOW);
@@ -152,15 +157,47 @@ client.on('messageCreate', async (message) => {
   if (updated.length >= SPAM_LIMIT) {
     await message.delete().catch(() => {});
     await deleteUserMessages(message.channel, message.author.id);
-    await timeoutMember(message.guild, message.author.id, 86400000, 'سبام رسائل');
+    await timeoutMember(message.guild, message.author.id, 86400000, 'Message spam');
     return;
   }
+});
 
-  // 6️⃣ كلمات بذيئة
-  if (badWords.some(word => content.toLowerCase().includes(word))) {
-    await message.delete().catch(() => {});
-    await timeoutMember(message.guild, message.author.id, 86400000, 'ألفاظ بذيئة');
-    return;
+// ================== Anti-Nuke Protection ==================
+client.on('guildAuditLogEntryCreate', async (entry) => {
+  const actionType = entry.action;
+  const executor = entry.executor;
+
+  if (!executor || executor.bot || executor.id === OWNER_ID) return;
+
+  const guild = entry.target.guild || entry.guild;
+  const member = await guild.members.fetch(executor.id).catch(() => null);
+
+  if (!member) return;
+
+  if (member.permissions.has(PermissionsBitField.Flags.Administrator)) return;
+
+  const destructiveActions = [
+    AuditLogEvent.RoleDelete,
+    AuditLogEvent.ChannelDelete,
+    AuditLogEvent.MemberBanAdd,
+    AuditLogEvent.WebhookCreate,
+    AuditLogEvent.BotAdd,
+    AuditLogEvent.EmojiDelete
+  ];
+
+  if (destructiveActions.includes(actionType)) {
+    await member.roles.set([]).catch(() => {});
+    await guild.members.ban(member.id, { reason: 'Nuke Protection Triggered' }).catch(() => {});
+
+    const logChannel = guild.channels.cache.get(LOG_CHANNEL_ID);
+    if (logChannel) {
+      const embed = new EmbedBuilder()
+        .setTitle('🚨 Nuke Attempt Detected')
+        .setDescription(`User: **${executor.tag}** attempted a destructive action and was banned.`)
+        .setColor('Red')
+        .setTimestamp();
+      logChannel.send({ embeds: [embed] });
+    }
   }
 });
 
@@ -480,4 +517,5 @@ client.once('ready', () => {
 });
 
 client.login(TOKEN);
+
 
