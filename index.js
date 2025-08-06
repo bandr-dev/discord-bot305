@@ -330,8 +330,6 @@ if (command === 'نشر') {
     .setTimestamp();
 
   message.channel.send({ embeds: [embed] });
-}
-
 
   }
 
@@ -536,6 +534,7 @@ client.once('ready', () => {
 });
 
 client.login(TOKEN);
+
 
 
 
