@@ -296,8 +296,6 @@ client.on('messageCreate', async (message) => {
     return sendBoth(`✅ تم إعطاء ${member.user.tag} تايم أوت.`, `✅ Timeout given to ${member.user.tag}.`);
   }
 
-  const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
-
 if (command === 'نشر') {
   const content = args.join(' ');
   if (!content) return message.reply('❌ اكتب القوانين بعد الأمر.');
@@ -538,6 +536,7 @@ client.once('ready', () => {
 });
 
 client.login(TOKEN);
+
 
 
 
