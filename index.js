@@ -32,9 +32,9 @@ const client = new Client({
 const prefix = '&';
 
 // 🔹 ID الروم الصوتي اللي البوت يجلس فيه
-const WAITING_ROOM_ID = 'اكتب_ID_الروم_الصوتي';
+const WAITING_ROOM_ID = '1400602479728656434';
 // 🔹 رومات الإدارة اللي يوصلهم تنبيه
-const ADMIN_ROOMS = ['اكتب_ID_روم1', 'اكتب_ID_روم2'];
+const ADMIN_ROOMS = ['1400598301585440831', '1400598027965566976', '1400597959309262868'];
 const invites = new Map();
 const invitesMap = new Map();
 const userMessages = new Map();
@@ -601,6 +601,7 @@ async function playAudioSequentially(channel, urls) {
 
 
 client.login(TOKEN);
+
 
 
 
