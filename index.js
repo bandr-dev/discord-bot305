@@ -527,9 +527,14 @@ client.on('messageUpdate', async (oldMessage, newMessage) => {
   if (!newMessage.guild || oldMessage.content === newMessage.content) return;
   const channel = client.channels.cache.get(logChannels.messageUpdateLogChannelId);
   if (channel) {
-    const embed = createLogEmbed('✏️ تعديل رسالة', `**${newMessage.author?.tag}** عدّل رسالته:\n**قبل:** ${oldMessage.content || '...'}\n**بعد:** ${newMessage.content || '...'}`, 'Yellow');
+    const embed = createLogEmbed(
+      '✏️ تعديل رسالة',
+      `**${newMessage.author?.tag}** عدّل رسالته:\n**قبل:** ${oldMessage.content || '...'}\n**بعد:** ${newMessage.content || '...'}`,
+      'Yellow'
+    );
     channel.send({ embeds: [embed] });
   }
+}); // ← هنا القوس الناقص
 client.once('ready', () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
 
@@ -601,6 +606,7 @@ async function playAudioSequentially(channel, urls) {
 
 
 client.login(TOKEN);
+
 
 
 
