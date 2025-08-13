@@ -3,14 +3,6 @@ const {
   EmbedBuilder, AuditLogEvent, ActionRowBuilder, ButtonBuilder, ButtonStyle 
 } = require('discord.js');
 
-const { 
-  joinVoiceChannel, createAudioPlayer, createAudioResource, 
-  AudioPlayerStatus, NoSubscriberBehavior 
-} = require('@discordjs/voice');
-
-const googleTTS = require('google-tts-api');
-const https = require('https');
-
 const TOKEN = process.env.DISCORD_TOKEN || 'YOUR_BOT_TOKEN';
 
 const client = new Client({
@@ -30,11 +22,6 @@ const client = new Client({
 });
 
 const prefix = '&';
-
-// 🔹 ID الروم الصوتي اللي البوت يجلس فيه
-const WAITING_ROOM_ID = '1400602479728656434';
-// 🔹 رومات الإدارة اللي يوصلهم تنبيه
-const ADMIN_ROOMS = ['1400598301585440831', '1400598027965566976', '1400597959309262868'];
 const invites = new Map();
 const invitesMap = new Map();
 const userMessages = new Map();
@@ -527,88 +514,15 @@ client.on('messageUpdate', async (oldMessage, newMessage) => {
   if (!newMessage.guild || oldMessage.content === newMessage.content) return;
   const channel = client.channels.cache.get(logChannels.messageUpdateLogChannelId);
   if (channel) {
-    const embed = createLogEmbed(
-      '✏️ تعديل رسالة',
-      `**${newMessage.author?.tag}** عدّل رسالته:\n**قبل:** ${oldMessage.content || '...'}\n**بعد:** ${newMessage.content || '...'}`,
-      'Yellow'
-    );
+    const embed = createLogEmbed('✏️ تعديل رسالة', `**${newMessage.author?.tag}** عدّل رسالته:\n**قبل:** ${oldMessage.content || '...'}\n**بعد:** ${newMessage.content || '...'}`, 'Yellow');
     channel.send({ embeds: [embed] });
   }
-}); // ← هنا القوس الناقص
+});
 client.once('ready', () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
-
-  const channel = client.channels.cache.get(WAITING_ROOM_ID);
-  if (channel) {
-    joinVoiceChannel({
-      channelId: channel.id,
-      guildId: channel.guild.id,
-      adapterCreator: channel.guild.voiceAdapterCreator,
-    });
-    console.log('🎤 البوت دخل روم الانتظار.');
-  }
 });
-client.on('voiceStateUpdate', async (oldState, newState) => {
-  if (newState.channelId === WAITING_ROOM_ID && oldState.channelId !== WAITING_ROOM_ID) {
-    const member = newState.member;
-
-    const urlAr = googleTTS.getAudioUrl('انتظر الإدارة سوف تتواصل معك', {
-      lang: 'ar',
-      slow: false,
-      host: 'https://translate.google.com',
-    });
-
-    const urlEn = googleTTS.getAudioUrl('Please wait, the staff will contact you soon', {
-      lang: 'en',
-      slow: false,
-      host: 'https://translate.google.com',
-    });
-
-    await playAudioSequentially(newState.channel, [urlAr, urlEn]);
-
-    ADMIN_ROOMS.forEach(roomId => {
-      const room = member.guild.channels.cache.get(roomId);
-      if (room && room.isVoiceBased()) {
-        room.members.forEach(admin => {
-          admin.send(`🎤 يوجد شخص في الانتظار: ${member.user.tag}`).catch(() => {});
-        });
-      }
-    });
-  }
-});
-function streamFromURL(url) {
-  return new Promise((resolve, reject) => {
-    https.get(url, res => {
-      resolve(res);
-    }).on('error', reject);
-  });
-}
-
-async function playAudioSequentially(channel, urls) {
-  const connection = joinVoiceChannel({
-    channelId: channel.id,
-    guildId: channel.guild.id,
-    adapterCreator: channel.guild.voiceAdapterCreator,
-  });
-
-  const player = createAudioPlayer({ behaviors: { noSubscriber: NoSubscriberBehavior.Stop } });
-  connection.subscribe(player);
-
-  for (const url of urls) {
-    const stream = await streamFromURL(url);
-    const resource = createAudioResource(stream);
-    player.play(resource);
-    await new Promise(resolve => {
-      player.once(AudioPlayerStatus.Idle, resolve);
-    });
-  }
-}
-
 
 client.login(TOKEN);
-
-
-
 
 
 
