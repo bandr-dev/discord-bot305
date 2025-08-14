@@ -50,8 +50,13 @@ const logChannels = {
 };
 
 const roleIds = {
+  👑│SERVEROWNER: '1319779381471608932',
+  𝐅𝐨𝐮𝐧𝐝𝐞𝐫: '1350649812642435112',
+  🔨│𝐌𝐨𝐝𝐞𝐫𝐚𝐭𝐨𝐫: '1399059261857992806',
+  🔒│𝐀𝐃𝐌𝐈𝐍: '1376825337056333884',
   fullAccess: '1209871038284832908',
   mediumAccess: '1195472593541673031',
+𝐒𝐭𝐨𝐫𝐞𝐒𝐮𝐩𝐩𝐨𝐫𝐭: '1404397747343327334',
 };
 const badWords = [
   'كلب','قحبة','خنيث','حقير','زق','يلعن','عاهرة','نجس','متناك','تف عليك','كس امك',
@@ -235,38 +240,38 @@ client.on('messageCreate', async (message) => {
 
   if (command === 'ping') return sendBoth('🏓 البوت شغال تمام!', '🏓 Bot is up and running!');
 
-  if (command === 'اقفل') {
+  if (command === 'lock') {
     await message.channel.permissionOverwrites.edit(message.guild.roles.everyone, { SendMessages: false });
     return sendBoth('🔒 تم قفل القناة.', '🔒 Channel locked.');
   }
 
-  if (command === 'افتح') {
+  if (command === 'unlock') {
     await message.channel.permissionOverwrites.edit(message.guild.roles.everyone, { SendMessages: true });
     return sendBoth('🔓 تم فتح القناة.', '🔓 Channel unlocked.');
   }
 
-  if (command === 'امسح') {
+  if (command === 'مسح') {
     const amount = parseInt(args[0]);
     if (!amount || amount < 1 || amount > 100) return sendBoth('❌ رقم بين 1-100', '❌ Number between 1-100.');
     await message.channel.bulkDelete(amount, true);
     return sendBoth(`✅ تم حذف ${amount} رسالة.`, `✅ Deleted ${amount} messages.`);
   }
 
-  if (command === 'كيك') {
+  if (command === 'kick') {
     const member = message.mentions.members.first();
     if (!member || !member.kickable) return sendBoth('❌ لا يمكن طرده.', '❌ Cannot kick this user.');
     await member.kick();
     return sendBoth(`✅ تم طرد ${member.user.tag}.`, `✅ Kicked ${member.user.tag}.`);
   }
 
-  if (command === 'باند') {
+  if (command === 'ban') {
     const member = message.mentions.members.first();
     if (!member || !member.bannable) return sendBoth('❌ لا يمكن حظره.', '❌ Cannot ban this user.');
     await member.ban();
     return sendBoth(`✅ تم حظر ${member.user.tag}.`, `✅ Banned ${member.user.tag}.`);
   }
 
-  if (command === 'فك-باند') {
+  if (command === 'unban') {
     const userId = args[0]?.replace(/[<@!>]/g, '');
     if (!userId) return sendBoth('❌ اكتب ID العضو.', '❌ Provide user ID.');
     try {
@@ -277,7 +282,7 @@ client.on('messageCreate', async (message) => {
     }
   }
 
-  if (command === 'تايم-اوت') {
+  if (command === 'timeout') {
     const member = message.mentions.members.first();
     const time = parseInt(args[1]);
     if (!member || isNaN(time)) return sendBoth('❌ منشن العضو والمدة.', '❌ Mention user and duration.');
@@ -346,7 +351,7 @@ client.on('interactionCreate', async (interaction) => {
     await interaction.reply({ content: '✅ لقد وافقت على القوانين بنجاح.', ephemeral: true });
 
     // تقدر تضيف له رتبة تلقائيًا هنا:
-    // await interaction.member.roles.add('ROLE_ID');
+   await interaction.member.roles.add('1405417400614260756');
   }
 });
 function createLogEmbed(title, description, color = 'Grey') {
@@ -523,6 +528,7 @@ client.once('ready', () => {
 });
 
 client.login(TOKEN);
+
 
 
 
