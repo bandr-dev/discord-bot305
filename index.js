@@ -523,11 +523,17 @@ client.on('messageUpdate', async (oldMessage, newMessage) => {
     channel.send({ embeds: [embed] });
   }
 });
+        activity: {
+            name: "C4.community.bots", // رسالة حالة البوت
+            type: "WATCHING", // PLAYING, STREAMING, LISTENING, WATCHING, COMPETING
+            status: "dnd", // online, idle, dnd, invisible
+        },
 client.once('ready', () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
 });
 
 client.login(TOKEN);
+
 
 
 
