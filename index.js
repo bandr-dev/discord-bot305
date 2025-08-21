@@ -523,11 +523,23 @@ client.on('messageUpdate', async (oldMessage, newMessage) => {
     channel.send({ embeds: [embed] });
   }
 });
-client.once('ready', () => {
-  console.log(`✅ Logged in as ${client.user.tag}`);
+client.once("ready", () => {
+    console.log(`✅ Logged in as ${client.user.tag}`);
+
+    // هنا تضيف حالة البوت
+    client.user.setPresence({
+        activities: [
+            {
+                name: "ｂａｎｄａｒ．ｄｅｖ", // رسالة حالة البوت
+                type: 3, // 0 = PLAYING, 1 = STREAMING, 2 = LISTENING, 3 = WATCHING, 5 = COMPETING
+            }
+        ],
+        status: "dnd", // online, idle, dnd, invisible
+    });
 });
 
 client.login(TOKEN);
+
 
 
 
