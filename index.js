@@ -396,21 +396,28 @@ client.on("messageCreate", async (message) => {
   }
 
   if (command === "اعلان") {
-    if (args.length === 0) return message.reply("❌ اكتب محتوى الإعلان بعد الأمر.");
-    const content = args.join(" ");
+  if (args.length === 0) return message.reply("❌ اكتب محتوى الإعلان بعد الأمر.");
+  const content = args.join(" ");
 
-    await message.delete().catch(() => {});
+  await message.delete().catch(() => {});
 
-    const embed = new EmbedBuilder()
-      .setTitle("📢 إعلان مجتمع C4")
-      .setDescription(content)
-      .setColor("Black")
-      .setThumbnail(message.guild.iconURL())
-      .setImage(config.serverImageUrl)
-      .setTimestamp();
-
-    message.channel.send({ embeds: [embed] });
+  // نجيب قناة الإعلانات من الكونفق
+  const announcementChannel = message.guild.channels.cache.get(config.announcementChannelId);
+  if (!announcementChannel) {
+    return message.reply("❌ لم أجد قناة الإعلانات. تأكد من ID القناة في config.json");
   }
+
+  const embed = new EmbedBuilder()
+    .setTitle("📢 إعلان مجتمع C4")
+    .setDescription(content)
+    .setColor("Blue")
+    .setThumbnail(message.guild.iconURL())
+    .setImage(config.serverImageUrl)
+    .setTimestamp();
+
+  announcementChannel.send({ embeds: [embed] });
+}
+
 
   if (command === "say") {
     const content = args.join(" ");
@@ -761,4 +768,5 @@ client.once("ready", () => {
 });
 
 client.login(TOKEN);
+
 
