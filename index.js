@@ -403,11 +403,7 @@ if (command === "اعلان") {
 
   // نجيب قناة الإعلانات من الكونفق
   const announcementChannel = message.guild.channels.cache.get(config.announcementChannelId);
-  console.log("🔍 قناة الإعلانات:", announcementChannel?.id || "ما لقيت القناة");
-
-  if (!announcementChannel) {
-    return message.reply("❌ لم أجد قناة الإعلانات. تأكد من ID القناة في config.json");
-  }
+  console.log("🔍 محاولة إرسال إعلان في:", announcementChannel?.id || "القناة غير موجودة");
 
   const embed = new EmbedBuilder()
     .setTitle("📢 إعلان مجتمع C4")
@@ -417,9 +413,14 @@ if (command === "اعلان") {
     .setImage(config.serverImageUrl)
     .setTimestamp();
 
-  announcementChannel.send({ embeds: [embed] })
-    .catch(err => console.error("خطأ أثناء إرسال الإعلان:", err));
+  // إذا لقى قناة الإعلانات يرسل فيها، غير كذا يرسل في نفس الروم
+  const targetChannel = announcementChannel || message.channel;
+
+  targetChannel.send({ embeds: [embed] })
+    .then(() => console.log("✅ الإعلان تم إرساله بنجاح"))
+    .catch(err => console.error("❌ خطأ أثناء إرسال الإعلان:", err));
 }
+
 
 
 
@@ -772,6 +773,7 @@ client.once("ready", () => {
 });
 
 client.login(TOKEN);
+
 
 
 
