@@ -2,7 +2,7 @@ const {
   Client, GatewayIntentBits, Partials, PermissionsBitField, 
   EmbedBuilder, AuditLogEvent, ActionRowBuilder, ButtonBuilder, ButtonStyle 
 } = require('discord.js');
-
+const config = require('./config.json'); // ملف الكونفيج
 const TOKEN = process.env.DISCORD_TOKEN || 'YOUR_BOT_TOKEN';
 
 const client = new Client({
@@ -28,171 +28,140 @@ const userMessages = new Map();
 const actionTracker = new Map();
 const MAX_ACTIONS = 3;
 
-const logChannels = {
-  banLogChannelId: '1196375859104317461',
-  unbanLogChannelId: '1196376525461786734',
-  memberRemoveLogChannelId: '1196376358348140544',
-  messageDeleteLogChannelId: '1196376149702475818',
-  messageUpdateLogChannelId: '1196376203460870195',
-  channelDeleteLogChannelId: '1196376095969255455',
-  channelCreateLogChannelId: '1196376023693013172',
-  channelUpdateLogChannelId: '1196376605208096818',
-  roleDeleteLogChannelId: '1196376183575674880',
-  roleCreateLogChannelId: '1196376068882448444',
-  roleUpdateLogChannelId: '1196376630411673650',
-  nicknameUpdateLogChannelId: '1196376380351451208',
-  voiceLogChannelId: '1196376765401153586',
-  timeoutLogChannelId: '1196375994232225802',
-  kickLogChannelId: '1196376279646228511',
-  protectionLogChannelId: '1196376675055845426',
-  inviteLogChannelId: '1196376497338986517',
-  guildUpdateLogChannelId: '1209859968560537620'
-};
-
-const roleIds = {
-  SERVEROWNER: '1319779381471608932',
-  𝐅𝐨𝐮𝐧𝐝𝐞𝐫: '1350649812642435112',
-  𝐌𝐨𝐝𝐞𝐫𝐚𝐭𝐨𝐫: '1399059261857992806',
-  𝐀𝐃𝐌𝐈𝐍: '1376825337056333884',
-  fullAccess: '1209871038284832908',
-  mediumAccess: '1195472593541673031',
-  𝐒𝐭𝐨𝐫𝐞𝐒𝐮𝐩𝐩𝐨𝐫𝐭: '1404397747343327334',
-};
-const badWords = [
-  'كلب','قحبة','خنيث','حقير','زق','يلعن','عاهرة','نجس','متناك','تف عليك','كس امك',
-  'fuck','bitch','slut','dick','pussy','rape','porn','sex','nigga','cum'
-];
-
-// ================== Full Protection System ==================
-
-const OWNER_ID = '1114668397725220954';
-const LOG_CHANNEL_ID = '1196376675055845426'; // Replace with your log channel ID
-
-const EMOJI_SPAM_LIMIT = 10;
-const CAPS_PERCENTAGE_LIMIT = 70;
-const SPAM_LIMIT = 10;
-const TIME_WINDOW = 10000;
-
-
-// Delete all user messages in a channel (up to 100 messages)
+// ================== Utility Functions ==================
 async function deleteUserMessages(channel, userId) {
-  const messages = await channel.messages.fetch({ limit: 100 });
-  const userMessages = messages.filter(m => m.author.id === userId);
-  if (userMessages.size > 0) {
-    await channel.bulkDelete(userMessages, true).catch(() => {});
-  }
+    const messages = await channel.messages.fetch({ limit: 30 });
+    const userMsgs = messages.filter(m => m.author.id === userId);
+    if (userMsgs.size > 0) await channel.bulkDelete(userMsgs, true).catch(() => {});
 }
 
-// Timeout punishment
 async function timeoutMember(guild, userId, duration, reason) {
-  try {
-    const member = await guild.members.fetch(userId);
-    if (member && !member.permissions.has(PermissionsBitField.Flags.Administrator)) {
-      await member.timeout(duration, reason);
-
-      // Send log to log channel
-      const logChannel = guild.channels.cache.get(LOG_CHANNEL_ID);
-      if (logChannel) {
-        const embed = new EmbedBuilder()
-          .setTitle('🔒 User Timed Out')
-          .setDescription(`User: <@${userId}> has been timed out for **${reason}**.`)
-          .setColor('Orange')
-          .setTimestamp();
-        logChannel.send({ embeds: [embed] });
-      }
-    }
-  } catch (err) {
-    console.error('Timeout failed:', err);
-  }
+    try {
+        const member = await guild.members.fetch(userId);
+        if (!member) return null;
+        if (member.roles.cache.some(r => config.bypassRoleIds.includes(r.id)) || member.permissions.has(PermissionsBitField.Flags.Administrator)) return null;
+        await member.timeout(duration, reason);
+        return member;
+    } catch (err) { console.error(err); return null; }
 }
 
-// ================== Anti-Spam & Anti-Link & Anti-Caps ==================
-client.on('messageCreate', async (message) => {
-  if (message.author.bot || !message.guild) return;
+async function logPunishment(guild, member, reason, content, duration, channelName) {
+    const logChannel = guild.channels.cache.get(config.logChannelId);
+    if (!logChannel) return;
+    const embed = new EmbedBuilder()
+        .setTitle('🚨 Punishment Applied')
+        .setColor('Red')
+        .addFields(
+            { name: '👤 User', value: `${member.user.tag} (${member.id})` },
+            { name: '📄 Reason', value: reason },
+            { name: '⏱ Duration', value: `${duration / 3600000} hours` },
+            { name: '💬 Message', value: content || "No content" },
+            { name: '🏷 Channel', value: channelName || "Unknown" }
+        )
+        .setTimestamp();
+    logChannel.send({ content: reason === 'Nuke Protection' ? config.adminRoleIds.map(r => `<@&${r}>`).join(' ') : null, embeds: [embed] });
+}
 
-  if (message.member.permissions.has(PermissionsBitField.Flags.Administrator)) return;
+// ================== Message Protection ==================
+client.on('messageCreate', async message => {
+    if (message.author.bot || !message.guild) return;
+    if (message.member.roles.cache.some(r => config.bypassRoleIds.includes(r.id))) return;
 
-  const content = message.content;
+    const content = message.content.toLowerCase();
 
-  // 1️⃣ Prevent @everyone & @here
-  if (message.mentions.everyone) {
-    await message.delete().catch(() => {});
-    await deleteUserMessages(message.channel, message.author.id);
-    await timeoutMember(message.guild, message.author.id, 86400000, 'Mentioning @everyone');
-    return;
-  }
+    // Bad words filter
+    if (config.badWords.some(word => content.includes(word))) {
+        await message.delete().catch(() => {});
+        await deleteUserMessages(message.channel, message.author.id);
+        const member = await timeoutMember(message.guild, message.author.id, config.punishDurations.other, 'Bad language');
+        if (member) await logPunishment(message.guild, member, 'Bad language', message.content, config.punishDurations.other, message.channel.name);
+        return;
+    }
 
-  // 2️⃣ Links
-  if (/https?:\/\/|discord\.gg/i.test(content)) {
-    await message.delete().catch(() => {});
-    await deleteUserMessages(message.channel, message.author.id);
-    await timeoutMember(message.guild, message.author.id, 86400000, 'Posting links');
-    return;
-  }
+    // @everyone & @here
+    if (message.mentions.everyone) {
+        await message.delete().catch(() => {});
+        await deleteUserMessages(message.channel, message.author.id);
+        const member = await timeoutMember(message.guild, message.author.id, config.punishDurations.other, 'Mentioning @everyone');
+        if (member) await logPunishment(message.guild, member, 'Mentioning @everyone', message.content, config.punishDurations.other, message.channel.name);
+        return;
+    }
 
-  // 4️⃣ Emoji Spam
-  const emojiCount = (content.match(/<a?:.+?:\d+>|[\uD800-\uDBFF][\uDC00-\uDFFF]/g) || []).length;
-  if (emojiCount >= EMOJI_SPAM_LIMIT) {
-    await message.delete().catch(() => {});
-    await deleteUserMessages(message.channel, message.author.id);
-    await timeoutMember(message.guild, message.author.id, 86400000, 'Emoji spam');
-    return;
-  }
+    // Links
+    if (/https?:\/\/|discord\.gg/i.test(content)) {
+        await message.delete().catch(() => {});
+        await deleteUserMessages(message.channel, message.author.id);
+        const member = await timeoutMember(message.guild, message.author.id, config.punishDurations.other, 'Posting links');
+        if (member) await logPunishment(message.guild, member, 'Posting links', message.content, config.punishDurations.other, message.channel.name);
+        return;
+    }
 
-  // 5️⃣ Message Spam
-  const now = Date.now();
-  const timestamps = userMessages.get(message.author.id) || [];
-  const updated = timestamps.filter(t => now - t < TIME_WINDOW);
-  updated.push(now);
-  userMessages.set(message.author.id, updated);
+    // Emoji Spam
+    const emojiCount = (content.match(/<a?:.+?:\d+>|[\uD800-\uDBFF][\uDC00-\uDFFF]/g) || []).length;
+    if (emojiCount >= config.emojiSpamLimit) {
+        await message.delete().catch(() => {});
+        await deleteUserMessages(message.channel, message.author.id);
+        const member = await timeoutMember(message.guild, message.author.id, config.punishDurations.other, 'Emoji spam');
+        if (member) await logPunishment(message.guild, member, 'Emoji spam', message.content, config.punishDurations.other, message.channel.name);
+        return;
+    }
 
-  if (updated.length >= SPAM_LIMIT) {
-    await message.delete().catch(() => {});
-    await deleteUserMessages(message.channel, message.author.id);
-    await timeoutMember(message.guild, message.author.id, 86400000, 'Message spam');
-    return;
-  }
+    // Message Spam
+    const now = Date.now();
+    const timestamps = userMessages.get(message.author.id) || [];
+    const updated = timestamps.filter(t => now - t < config.timeWindow);
+    updated.push(now);
+    userMessages.set(message.author.id, updated);
+
+    if (updated.length >= config.spamLimit) {
+        await message.delete().catch(() => {});
+        await deleteUserMessages(message.channel, message.author.id);
+        const member = await timeoutMember(message.guild, message.author.id, config.punishDurations.other, 'Message spam');
+        if (member) await logPunishment(message.guild, member, 'Message spam', message.content, config.punishDurations.other, message.channel.name);
+        return;
+    }
 });
 
 // ================== Anti-Nuke Protection ==================
-client.on('guildAuditLogEntryCreate', async (entry) => {
-  const actionType = entry.action;
-  const executor = entry.executor;
+client.on('guildAuditLogEntryCreate', async entry => {
+    const destructiveActions = [
+        AuditLogEvent.RoleDelete,
+        AuditLogEvent.ChannelDelete,
+        AuditLogEvent.MemberBanAdd,
+        AuditLogEvent.WebhookCreate,
+        AuditLogEvent.BotAdd,
+        AuditLogEvent.EmojiDelete
+    ];
 
-  if (!executor || executor.bot || executor.id === OWNER_ID) return;
+    if (!destructiveActions.includes(entry.action)) return;
 
-  const guild = entry.target.guild || entry.guild;
-  const member = await guild.members.fetch(executor.id).catch(() => null);
+    const executor = entry.executor;
+    if (!executor || executor.bot || executor.id === config.ownerId) return;
 
-  if (!member) return;
+    const guild = entry.guild;
+    const member = await guild.members.fetch(executor.id).catch(() => null);
+    if (!member) return;
+    if (member.roles.cache.some(r => config.bypassRoleIds.includes(r.id))) return;
 
-  if (member.permissions.has(PermissionsBitField.Flags.Administrator)) return;
+    // Apply punishment: Timeout for Nuke Protection
+    const punishedMember = await timeoutMember(guild, executor.id, config.punishDurations.nuke, 'Nuke Protection');
 
-  const destructiveActions = [
-    AuditLogEvent.RoleDelete,
-    AuditLogEvent.ChannelDelete,
-    AuditLogEvent.MemberBanAdd,
-    AuditLogEvent.WebhookCreate,
-    AuditLogEvent.BotAdd,
-    AuditLogEvent.EmojiDelete
-  ];
-
-  if (destructiveActions.includes(actionType)) {
-    await member.roles.set([]).catch(() => {});
-    await guild.members.ban(member.id, { reason: 'Nuke Protection Triggered' }).catch(() => {});
-
-    const logChannel = guild.channels.cache.get(LOG_CHANNEL_ID);
-    if (logChannel) {
-      const embed = new EmbedBuilder()
+    const logChannel = guild.channels.cache.get(config.logChannelId);
+    if (!logChannel) return;
+    const embed = new EmbedBuilder()
         .setTitle('🚨 Nuke Attempt Detected')
-        .setDescription(`User: **${executor.tag}** attempted a destructive action and was banned.`)
+        .setDescription(`User: ${executor.tag} attempted a destructive action and received punishment.`)
+        .addFields(
+            { name: '👤 User', value: `${executor.tag} (${executor.id})` },
+            { name: '📄 Reason', value: 'Nuke Protection' },
+            { name: '⏱ Duration', value: `${config.punishDurations.nuke / 3600000} hours` },
+            { name: '🏷 Action', value: entry.action.toString() }
+        )
         .setColor('Red')
         .setTimestamp();
-      logChannel.send({ embeds: [embed] });
-    }
-  }
+    logChannel.send({ content: config.adminRoleIds.map(r => `<@&${r}>`).join(' '), embeds: [embed] });
 });
-
+-----------------------------------------------------------------------------------------------------------------------
 const getInviteCounts = async (guild) => {
     return new Map(guild.invites.cache.map(invite => [invite.code, invite.uses]));
 };
@@ -780,3 +749,4 @@ client.once("ready", () => {
 });
 
 client.login(TOKEN);
+
