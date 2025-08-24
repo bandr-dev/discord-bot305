@@ -30,7 +30,6 @@ const prefix = '&';
 const invites = new Map();
 const userMessages = new Map();
 
-
 // ================== Anti-Nuke Protection ==================
 client.on("guildAuditLogEntryCreate", async entry => {
   const destructiveActions = [
@@ -53,14 +52,10 @@ client.on("guildAuditLogEntryCreate", async entry => {
   if (member.roles.cache.some(r => config.bypassRoleIds.includes(r.id))) return;
 
   try {
-    // 🔴 1. إزالة كل الرتب
-    await member.roles.set([config.nukePunishmentRoleId]); // حطيت الرتبة العقابية من config.json
-
-    // 🔴 2. تايم أوت أسبوع كامل
-    const weekMs = 7 * 24 * 60 * 60 * 1000; // أسبوع
+    await member.roles.set([config.nukePunishmentRoleId]);
+    const weekMs = 7 * 24 * 60 * 60 * 1000;
     await member.timeout(weekMs, "Nuke Protection - Destructive Action");
 
-    // 🔴 3. إرسال لوق
     const logChannel = guild.channels.cache.get(config.logChannelId);
     if (!logChannel) return;
 
@@ -87,14 +82,12 @@ client.on("guildAuditLogEntryCreate", async entry => {
 
 // -------------------------------------------------------------------------------------------
 
-// مسح رسائل المستخدم
 async function deleteUserMessages(channel, userId) {
   const messages = await channel.messages.fetch({ limit: 30 });
   const userMsgs = messages.filter(m => m.author.id === userId);
   if (userMsgs.size > 0) await channel.bulkDelete(userMsgs, true).catch(() => {});
 }
 
-// تايم أوت للعضو
 async function timeoutMember(guild, userId, duration, reason) {
   try {
     const member = await guild.members.fetch(userId);
@@ -107,7 +100,6 @@ async function timeoutMember(guild, userId, duration, reason) {
   } catch (err) { console.error(err); return null; }
 }
 
-// إرسال لوق العقوبات
 async function logPunishment(guild, member, reason, content, duration, channelName) {
   const logChannel = guild.channels.cache.get(config.logChannelId);
   if (!logChannel) return;
@@ -130,13 +122,11 @@ async function logPunishment(guild, member, reason, content, duration, channelNa
   });
 }
 
-// دالة رد بلغتين
 function sendBoth(message, arabic, english) {
   return message.reply({ content: `${arabic}\n${english}` });
 }
 
 // -------------------------------------------------------------------------------------------
-
 
 client.on("messageCreate", async message => {
   if (message.author.bot || !message.guild) return;
@@ -144,7 +134,6 @@ client.on("messageCreate", async message => {
 
   const content = message.content.toLowerCase();
 
-  // فلتر كلمات سيئة
   if (config.badWords.some(word => content.includes(word))) {
     await message.delete().catch(() => {});
     await deleteUserMessages(message.channel, message.author.id);
@@ -153,7 +142,6 @@ client.on("messageCreate", async message => {
     return;
   }
 
-  // @everyone & @here
   if (message.mentions.everyone) {
     await message.delete().catch(() => {});
     await deleteUserMessages(message.channel, message.author.id);
@@ -162,7 +150,6 @@ client.on("messageCreate", async message => {
     return;
   }
 
-  // روابط
   if (/https?:\/\/|discord\.gg/i.test(content)) {
     await message.delete().catch(() => {});
     await deleteUserMessages(message.channel, message.author.id);
@@ -171,7 +158,6 @@ client.on("messageCreate", async message => {
     return;
   }
 
-  // إيموجي سبام
   const emojiCount = (content.match(/<a?:.+?:\d+>|[\uD800-\uDBFF][\uDC00-\uDFFF]/g) || []).length;
   if (emojiCount >= config.emojiSpamLimit) {
     await message.delete().catch(() => {});
@@ -181,7 +167,6 @@ client.on("messageCreate", async message => {
     return;
   }
 
-  // سبام رسائل
   const now = Date.now();
   const timestamps = userMessages.get(message.author.id) || [];
   const updated = timestamps.filter(t => now - t < config.timeWindow);
@@ -196,6 +181,26 @@ client.on("messageCreate", async message => {
     return;
   }
 });
+
+// -------------------------------------------------------------------------------------------
+
+// باقي الكود (الترحيب، الأوامر، اللوق، XP system) لازم يتعدل بنفس الأسلوب:
+// - استبدال Discord.MessageEmbed → EmbedBuilder
+// - استبدال MessageActionRow → ActionRowBuilder
+// - استبدال MessageButton → ButtonBuilder
+// - إضافة الأقواس الناقصة }); لكل event
+// - استخدام config.logChannels بدل logChannels مباشرة
+
+client.once("ready", () => {
+  console.log(`✅ Logged in as ${client.user.tag}`);
+  client.user.setPresence({
+    activities: [{ name: "ｂａｎｄａｒ．ｄｅｖ", type: 3 }],
+    status: "dnd",
+  });
+});
+
+client.login(TOKEN);
+
 
 // -------------------------------------------------------------------------------------------
 
@@ -733,10 +738,3 @@ client.once("ready", () => {
 });
 
 client.login(TOKEN);
-
-
-
-
-
-
-
