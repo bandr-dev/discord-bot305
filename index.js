@@ -1,9 +1,14 @@
-const { 
-  Client, GatewayIntentBits, Partials, PermissionsBitField, 
-  EmbedBuilder, AuditLogEvent, ActionRowBuilder, ButtonBuilder, ButtonStyle 
-} = require('discord.js');
-const config = require('./config.json'); // ملف الكونفيج
-const TOKEN = process.env.DISCORD_TOKEN || 'YOUR_BOT_TOKEN';
+const {
+  Client, GatewayIntentBits, Partials, PermissionsBitField,
+  EmbedBuilder, AuditLogEvent, ActionRowBuilder, ButtonBuilder, ButtonStyle
+} = require("discord.js");
+
+const { open } = require("sqlite");
+const sqlite3 = require("sqlite3");
+
+const config = require("./config.json");
+
+const TOKEN = process.env.DISCORD_TOKEN || "YOUR_BOT_TOKEN";
 
 const client = new Client({
   intents: [
@@ -23,143 +28,167 @@ const client = new Client({
 
 const prefix = '&';
 const invites = new Map();
-const invitesMap = new Map();
 const userMessages = new Map();
-const actionTracker = new Map();
-const MAX_ACTIONS = 3;
-
-// ================== Utility Functions ==================
-async function deleteUserMessages(channel, userId) {
-    const messages = await channel.messages.fetch({ limit: 30 });
-    const userMsgs = messages.filter(m => m.author.id === userId);
-    if (userMsgs.size > 0) await channel.bulkDelete(userMsgs, true).catch(() => {});
-}
-
-async function timeoutMember(guild, userId, duration, reason) {
-    try {
-        const member = await guild.members.fetch(userId);
-        if (!member) return null;
-        if (member.roles.cache.some(r => config.bypassRoleIds.includes(r.id)) || member.permissions.has(PermissionsBitField.Flags.Administrator)) return null;
-        await member.timeout(duration, reason);
-        return member;
-    } catch (err) { console.error(err); return null; }
-}
-
-async function logPunishment(guild, member, reason, content, duration, channelName) {
-    const logChannel = guild.channels.cache.get(config.logChannelId);
-    if (!logChannel) return;
-    const embed = new EmbedBuilder()
-        .setTitle('🚨 Punishment Applied')
-        .setColor('Red')
-        .addFields(
-            { name: '👤 User', value: `${member.user.tag} (${member.id})` },
-            { name: '📄 Reason', value: reason },
-            { name: '⏱ Duration', value: `${duration / 3600000} hours` },
-            { name: '💬 Message', value: content || "No content" },
-            { name: '🏷 Channel', value: channelName || "Unknown" }
-        )
-        .setTimestamp();
-    logChannel.send({ content: reason === 'Nuke Protection' ? config.adminRoleIds.map(r => `<@&${r}>`).join(' ') : null, embeds: [embed] });
-}
-
-// ================== Message Protection ==================
-client.on('messageCreate', async message => {
-    if (message.author.bot || !message.guild) return;
-    if (message.member.roles.cache.some(r => config.bypassRoleIds.includes(r.id))) return;
-
-    const content = message.content.toLowerCase();
-
-    // Bad words filter
-    if (config.badWords.some(word => content.includes(word))) {
-        await message.delete().catch(() => {});
-        await deleteUserMessages(message.channel, message.author.id);
-        const member = await timeoutMember(message.guild, message.author.id, config.punishDurations.other, 'Bad language');
-        if (member) await logPunishment(message.guild, member, 'Bad language', message.content, config.punishDurations.other, message.channel.name);
-        return;
-    }
-
-    // @everyone & @here
-    if (message.mentions.everyone) {
-        await message.delete().catch(() => {});
-        await deleteUserMessages(message.channel, message.author.id);
-        const member = await timeoutMember(message.guild, message.author.id, config.punishDurations.other, 'Mentioning @everyone');
-        if (member) await logPunishment(message.guild, member, 'Mentioning @everyone', message.content, config.punishDurations.other, message.channel.name);
-        return;
-    }
-
-    // Links
-    if (/https?:\/\/|discord\.gg/i.test(content)) {
-        await message.delete().catch(() => {});
-        await deleteUserMessages(message.channel, message.author.id);
-        const member = await timeoutMember(message.guild, message.author.id, config.punishDurations.other, 'Posting links');
-        if (member) await logPunishment(message.guild, member, 'Posting links', message.content, config.punishDurations.other, message.channel.name);
-        return;
-    }
-
-    // Emoji Spam
-    const emojiCount = (content.match(/<a?:.+?:\d+>|[\uD800-\uDBFF][\uDC00-\uDFFF]/g) || []).length;
-    if (emojiCount >= config.emojiSpamLimit) {
-        await message.delete().catch(() => {});
-        await deleteUserMessages(message.channel, message.author.id);
-        const member = await timeoutMember(message.guild, message.author.id, config.punishDurations.other, 'Emoji spam');
-        if (member) await logPunishment(message.guild, member, 'Emoji spam', message.content, config.punishDurations.other, message.channel.name);
-        return;
-    }
-
-    // Message Spam
-    const now = Date.now();
-    const timestamps = userMessages.get(message.author.id) || [];
-    const updated = timestamps.filter(t => now - t < config.timeWindow);
-    updated.push(now);
-    userMessages.set(message.author.id, updated);
-
-    if (updated.length >= config.spamLimit) {
-        await message.delete().catch(() => {});
-        await deleteUserMessages(message.channel, message.author.id);
-        const member = await timeoutMember(message.guild, message.author.id, config.punishDurations.other, 'Message spam');
-        if (member) await logPunishment(message.guild, member, 'Message spam', message.content, config.punishDurations.other, message.channel.name);
-        return;
-    }
-});
 
 // ================== Anti-Nuke Protection ==================
-client.on('guildAuditLogEntryCreate', async entry => {
-    const destructiveActions = [
-        AuditLogEvent.RoleDelete,
-        AuditLogEvent.ChannelDelete,
-        AuditLogEvent.MemberBanAdd,
-        AuditLogEvent.WebhookCreate,
-        AuditLogEvent.BotAdd,
-        AuditLogEvent.EmojiDelete
-    ];
+client.on("guildAuditLogEntryCreate", async entry => {
+  const destructiveActions = [
+    AuditLogEvent.RoleDelete,
+    AuditLogEvent.ChannelDelete,
+    AuditLogEvent.MemberBanAdd,
+    AuditLogEvent.WebhookCreate,
+    AuditLogEvent.BotAdd,
+    AuditLogEvent.EmojiDelete
+  ];
 
-    if (!destructiveActions.includes(entry.action)) return;
+  if (!destructiveActions.includes(entry.action)) return;
 
-    const executor = entry.executor;
-    if (!executor || executor.bot || executor.id === config.ownerId) return;
+  const executor = entry.executor;
+  if (!executor || executor.bot || executor.id === config.ownerId) return;
 
-    const guild = entry.guild;
-    const member = await guild.members.fetch(executor.id).catch(() => null);
-    if (!member) return;
-    if (member.roles.cache.some(r => config.bypassRoleIds.includes(r.id))) return;
+  const guild = entry.guild;
+  const member = await guild.members.fetch(executor.id).catch(() => null);
+  if (!member) return;
+  if (member.roles.cache.some(r => config.bypassRoleIds.includes(r.id))) return;
 
-    // Apply punishment: Timeout for Nuke Protection
-    const punishedMember = await timeoutMember(guild, executor.id, config.punishDurations.nuke, 'Nuke Protection');
+  try {
+    // 🔴 1. إزالة كل الرتب
+    await member.roles.set([config.nukePunishmentRoleId]); // حطيت الرتبة العقابية من config.json
 
+    // 🔴 2. تايم أوت أسبوع كامل
+    const weekMs = 7 * 24 * 60 * 60 * 1000; // أسبوع
+    await member.timeout(weekMs, "Nuke Protection - Destructive Action");
+
+    // 🔴 3. إرسال لوق
     const logChannel = guild.channels.cache.get(config.logChannelId);
     if (!logChannel) return;
+
     const embed = new EmbedBuilder()
-        .setTitle('🚨 Nuke Attempt Detected')
-        .setDescription(`User: ${executor.tag} attempted a destructive action and received punishment.`)
-        .addFields(
-            { name: '👤 User', value: `${executor.tag} (${executor.id})` },
-            { name: '📄 Reason', value: 'Nuke Protection' },
-            { name: '⏱ Duration', value: `${config.punishDurations.nuke / 3600000} hours` },
-            { name: '🏷 Action', value: entry.action.toString() }
-        )
-        .setColor('Red')
-        .setTimestamp();
-    logChannel.send({ content: config.adminRoleIds.map(r => `<@&${r}>`).join(' '), embeds: [embed] });
+      .setTitle("🚨 Nuke Attempt Detected")
+      .setDescription(`User: ${executor.tag} حاول يسوي أكشن خطير وتم معاقبته.`)
+      .addFields(
+        { name: "👤 User", value: `${executor.tag} (${executor.id})` },
+        { name: "📄 Reason", value: "Nuke Protection" },
+        { name: "⏱ Duration", value: "7 days" },
+        { name: "🏷 Action", value: entry.action.toString() }
+      )
+      .setColor("Red")
+      .setTimestamp();
+
+    logChannel.send({
+      content: config.adminRoleIds.map(r => `<@&${r}>`).join(" "),
+      embeds: [embed]
+    });
+  } catch (err) {
+    console.error("Anti-nuke error:", err);
+  }
+});
+-------------------------------------------------------------------------------------------
+// مسح رسائل المستخدم
+async function deleteUserMessages(channel, userId) {
+  const messages = await channel.messages.fetch({ limit: 30 });
+  const userMsgs = messages.filter(m => m.author.id === userId);
+  if (userMsgs.size > 0) await channel.bulkDelete(userMsgs, true).catch(() => {});
+}
+
+// تايم أوت للعضو
+async function timeoutMember(guild, userId, duration, reason) {
+  try {
+    const member = await guild.members.fetch(userId);
+    if (!member) return null;
+    if (member.roles.cache.some(r => config.bypassRoleIds.includes(r.id)) ||
+        member.permissions.has(PermissionsBitField.Flags.Administrator)) return null;
+
+    await member.timeout(duration, reason);
+    return member;
+  } catch (err) { console.error(err); return null; }
+}
+
+// إرسال لوق العقوبات
+async function logPunishment(guild, member, reason, content, duration, channelName) {
+  const logChannel = guild.channels.cache.get(config.logChannelId);
+  if (!logChannel) return;
+
+  const embed = new EmbedBuilder()
+    .setTitle("🚨 Punishment Applied")
+    .setColor("Red")
+    .addFields(
+      { name: "👤 User", value: `${member.user.tag} (${member.id})` },
+      { name: "📄 Reason", value: reason },
+      { name: "⏱ Duration", value: `${duration / 3600000} hours` },
+      { name: "💬 Message", value: content || "No content" },
+      { name: "🏷 Channel", value: channelName || "Unknown" }
+    )
+    .setTimestamp();
+
+  logChannel.send({
+    content: reason === "Nuke Protection" ? config.adminRoleIds.map(r => `<@&${r}>`).join(" ") : null,
+    embeds: [embed]
+  });
+}
+
+// دالة رد بلغتين
+function sendBoth(message, arabic, english) {
+  return message.reply({ content: `${arabic}\n${english}` });
+}
+---------------------------------------------------------------------------------
+client.on("messageCreate", async message => {
+  if (message.author.bot || !message.guild) return;
+  if (message.member.roles.cache.some(r => config.bypassRoleIds.includes(r.id))) return;
+
+  const content = message.content.toLowerCase();
+
+  // فلتر كلمات سيئة
+  if (config.badWords.some(word => content.includes(word))) {
+    await message.delete().catch(() => {});
+    await deleteUserMessages(message.channel, message.author.id);
+    const member = await timeoutMember(message.guild, message.author.id, config.punishDurations.other, "Bad language");
+    if (member) await logPunishment(message.guild, member, "Bad language", message.content, config.punishDurations.other, message.channel.name);
+    return;
+  }
+
+  // @everyone & @here
+  if (message.mentions.everyone) {
+    await message.delete().catch(() => {});
+    await deleteUserMessages(message.channel, message.author.id);
+    const member = await timeoutMember(message.guild, message.author.id, config.punishDurations.other, "Mentioning @everyone");
+    if (member) await logPunishment(message.guild, member, "Mentioning @everyone", message.content, config.punishDurations.other, message.channel.name);
+    return;
+  }
+
+  // روابط
+  if (/https?:\/\/|discord\.gg/i.test(content)) {
+    await message.delete().catch(() => {});
+    await deleteUserMessages(message.channel, message.author.id);
+    const member = await timeoutMember(message.guild, message.author.id, config.punishDurations.other, "Posting links");
+    if (member) await logPunishment(message.guild, member, "Posting links", message.content, config.punishDurations.other, message.channel.name);
+    return;
+  }
+
+  // إيموجي سبام
+  const emojiCount = (content.match(/<a?:.+?:\d+>|[\uD800-\uDBFF][\uDC00-\uDFFF]/g) || []).length;
+  if (emojiCount >= config.emojiSpamLimit) {
+    await message.delete().catch(() => {});
+    await deleteUserMessages(message.channel, message.author.id);
+    const member = await timeoutMember(message.guild, message.author.id, config.punishDurations.other, "Emoji spam");
+    if (member) await logPunishment(message.guild, member, "Emoji spam", message.content, config.punishDurations.other, message.channel.name);
+    return;
+  }
+
+  // سبام رسائل
+  const now = Date.now();
+  const timestamps = userMessages.get(message.author.id) || [];
+  const updated = timestamps.filter(t => now - t < config.timeWindow);
+  updated.push(now);
+  userMessages.set(message.author.id, updated);
+
+  if (updated.length >= config.spamLimit) {
+    await message.delete().catch(() => {});
+    await deleteUserMessages(message.channel, message.author.id);
+    const member = await timeoutMember(message.guild, message.author.id, config.punishDurations.other, "Message spam");
+    if (member) await logPunishment(message.guild, member, "Message spam", message.content, config.punishDurations.other, message.channel.name);
+    return;
+  }
 });
 -----------------------------------------------------------------------------------------------------------------------
 const getInviteCounts = async (guild) => {
@@ -269,115 +298,117 @@ client.on('guildMemberAdd', async member => {
 function sendBoth(arabic, english) {
   return message.reply({ content: `${arabic}\n${english}` });
 }
-
+---------------------------------------------------------------------------------
 function hasPermission(member, command) {
+  const roleIds = config.roleIds; // لازم تضيف roleIds في config.json
   const hasFull = member.roles.cache.has(roleIds.fullAccess);
   const hasMedium = member.roles.cache.has(roleIds.mediumAccess);
-  const forbiddenForFull = ['باند', 'كيك', 'مانج-السيرفر'];
-  const forbiddenForMedium = ['باند', 'كيك', 'امسح', 'تايم-اوت', 'مانج-السيرفر'];
+
+  const forbiddenForFull = ["باند", "كيك", "مانج-السيرفر"];
+  const forbiddenForMedium = ["باند", "كيك", "امسح", "تايم-اوت", "مانج-السيرفر"];
 
   if (hasFull && !forbiddenForFull.includes(command)) return true;
   if (hasMedium && !forbiddenForMedium.includes(command)) return true;
   return false;
 }
 
-client.on('messageCreate', async (message) => {
+client.on("messageCreate", async (message) => {
   if (message.author.bot || !message.guild || !message.content.startsWith(prefix)) return;
 
   const args = message.content.slice(prefix.length).trim().split(/ +/);
   const command = args.shift().toLowerCase();
-  if (!hasPermission(message.member, command)) return message.reply('❌ ما عندك صلاحية استخدام هذا الأمر.');
+  if (!hasPermission(message.member, command)) return message.reply("❌ ما عندك صلاحية استخدام هذا الأمر.");
 
-  if (command === 'ping') return sendBoth('🏓 البوت شغال تمام!', '🏓 Bot is up and running!');
+  if (command === "ping") return sendBoth(message, "🏓 البوت شغال تمام!", "🏓 Bot is up and running!");
 
-  if (command === 'lock') {
+  if (command === "lock" || command === "اقفل") {
     await message.channel.permissionOverwrites.edit(message.guild.roles.everyone, { SendMessages: false });
-    return sendBoth('🔒 تم قفل القناة.', '🔒 Channel locked.');
+    return sendBoth(message, "🔒 تم قفل القناة.", "🔒 Channel locked.");
   }
 
-  if (command === 'unlock') {
+  if (command === "unlock" || command === "افتح") {
     await message.channel.permissionOverwrites.edit(message.guild.roles.everyone, { SendMessages: true });
-    return sendBoth('🔓 تم فتح القناة.', '🔓 Channel unlocked.');
+    return sendBoth(message, "🔓 تم فتح القناة.", "🔓 Channel unlocked.");
   }
 
-  if (command === 'مسح') {
+  if (command === "مسح") {
     const amount = parseInt(args[0]);
-    if (!amount || amount < 1 || amount > 100) return sendBoth('❌ رقم بين 1-100', '❌ Number between 1-100.');
+    if (!amount || amount < 1 || amount > 100) return sendBoth(message, "❌ رقم بين 1-100", "❌ Number between 1-100.");
     await message.channel.bulkDelete(amount, true);
-    return sendBoth(`✅ تم حذف ${amount} رسالة.`, `✅ Deleted ${amount} messages.`);
+    return sendBoth(message, `✅ تم حذف ${amount} رسالة.`, `✅ Deleted ${amount} messages.`);
   }
 
-  if (command === 'kick') {
+  if (command === "kick" || command === "كيك") {
     const member = message.mentions.members.first();
-    if (!member || !member.kickable) return sendBoth('❌ لا يمكن طرده.', '❌ Cannot kick this user.');
+    if (!member || !member.kickable) return sendBoth(message, "❌ لا يمكن طرده.", "❌ Cannot kick this user.");
     await member.kick();
-    return sendBoth(`✅ تم طرد ${member.user.tag}.`, `✅ Kicked ${member.user.tag}.`);
+    return sendBoth(message, `✅ تم طرد ${member.user.tag}.`, `✅ Kicked ${member.user.tag}.`);
   }
 
-  if (command === 'ban') {
+  if (command === "ban" || command === "باند") {
     const member = message.mentions.members.first();
-    if (!member || !member.bannable) return sendBoth('❌ لا يمكن حظره.', '❌ Cannot ban this user.');
+    if (!member || !member.bannable) return sendBoth(message, "❌ لا يمكن حظره.", "❌ Cannot ban this user.");
     await member.ban();
-    return sendBoth(`✅ تم حظر ${member.user.tag}.`, `✅ Banned ${member.user.tag}.`);
+    return sendBoth(message, `✅ تم حظر ${member.user.tag}.`, `✅ Banned ${member.user.tag}.`);
   }
 
-  if (command === 'unban') {
-    const userId = args[0]?.replace(/[<@!>]/g, '');
-    if (!userId) return sendBoth('❌ اكتب ID العضو.', '❌ Provide user ID.');
+  if (command === "unban" || command === "فك-باند") {
+    const userId = args[0]?.replace(/[<@!>]/g, "");
+    if (!userId) return sendBoth(message, "❌ اكتب ID العضو.", "❌ Provide user ID.");
     try {
       await message.guild.bans.remove(userId);
-      return sendBoth(`✅ تم فك الحظر عن ${userId}.`, `✅ Unbanned ${userId}.`);
+      return sendBoth(message, `✅ تم فك الحظر عن ${userId}.`, `✅ Unbanned ${userId}.`);
     } catch {
-      return sendBoth('❌ فشل في فك الحظر.', '❌ Failed to unban.');
+      return sendBoth(message, "❌ فشل في فك الحظر.", "❌ Failed to unban.");
     }
   }
 
-  if (command === 'timeout') {
+  if (command === "timeout" || command === "تايم-اوت") {
     const member = message.mentions.members.first();
     const time = parseInt(args[1]);
-    if (!member || isNaN(time)) return sendBoth('❌ منشن العضو والمدة.', '❌ Mention user and duration.');
+    if (!member || isNaN(time)) return sendBoth(message, "❌ منشن العضو والمدة.", "❌ Mention user and duration.");
     await member.timeout(time, `Timeout by ${message.author.tag}`);
-    return sendBoth(`✅ تم إعطاء ${member.user.tag} تايم أوت.`, `✅ Timeout given to ${member.user.tag}.`);
+    return sendBoth(message, `✅ تم إعطاء ${member.user.tag} تايم أوت.`, `✅ Timeout given to ${member.user.tag}.`);
   }
 
-if (command === 'نشر') {
-  const content = args.join(' ');
-  if (!content) return message.reply('❌ اكتب القوانين بعد الأمر.');
+  if (command === "نشر") {
+    const content = args.join(" ");
+    if (!content) return message.reply("❌ اكتب القوانين بعد الأمر.");
 
-  await message.delete().catch(() => {});
+    await message.delete().catch(() => {});
 
-  const embed = new EmbedBuilder()
-    .setAuthor({ name: message.guild.name, iconURL: message.guild.iconURL() || null })
-    .setDescription(content)
-    .setColor('#2F3136')
-    .setTimestamp();
+    const embed = new EmbedBuilder()
+      .setAuthor({ name: message.guild.name, iconURL: message.guild.iconURL() || null })
+      .setDescription(content)
+      .setColor("#2F3136")
+      .setTimestamp();
 
-  const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId('accept_rules')
-      .setLabel('✅ أوافق على القوانين')
-      .setStyle(ButtonStyle.Success)
-  );
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId("accept_rules")
+        .setLabel("✅ أوافق على القوانين")
+        .setStyle(ButtonStyle.Success)
+    );
 
-  message.channel.send({ embeds: [embed], components: [row] });
-
-} else if (command === 'send') {
-  const content = args.join(' ');
-  if (!content) return message.reply('❌ اكتب الرسالة بعد الأمر.');
-
-  await message.delete().catch(() => {});
-
-  const embed = new EmbedBuilder()
-    .setAuthor({ name: message.guild.name, iconURL: message.guild.iconURL() || null })
-    .setDescription(content)
-    .setColor('#2F3136')
-    .setTimestamp();
-
-  message.channel.send({ embeds: [embed] });
-
+    message.channel.send({ embeds: [embed], components: [row] });
   }
 
-  if (command === 'help' || command === 'مساعدة') {
+  if (command === "send") {
+    const content = args.join(" ");
+    if (!content) return message.reply("❌ اكتب الرسالة بعد الأمر.");
+
+    await message.delete().catch(() => {});
+
+    const embed = new EmbedBuilder()
+      .setAuthor({ name: message.guild.name, iconURL: message.guild.iconURL() || null })
+      .setDescription(content)
+      .setColor("#2F3136")
+      .setTimestamp();
+
+    message.channel.send({ embeds: [embed] });
+  }
+
+  if (command === "help" || command === "مساعدة") {
     await message.delete().catch(() => {});
     return message.channel.send(`
 🔧 **Available Commands | الأوامر المتاحة:**
@@ -394,6 +425,17 @@ if (command === 'نشر') {
     `);
   }
 });
+---------------------------------------------------------------------------------
+// تفاعل زر القوانين
+client.on("interactionCreate", async (interaction) => {
+  if (!interaction.isButton()) return;
+
+  if (interaction.customId === "accept_rules") {
+    await interaction.reply({ content: "✅ لقد وافقت على القوانين بنجاح.", ephemeral: true });
+    await interaction.member.roles.add(config.rulesRoleId); // لازم تضيف rulesRoleId في config.json
+  }
+});
+
 client.on('interactionCreate', async (interaction) => {
   if (!interaction.isButton()) return;
 
@@ -404,23 +446,19 @@ client.on('interactionCreate', async (interaction) => {
    await interaction.member.roles.add('1405417400614260756');
   }
 });
-function createLogEmbed(title, description, color = 'Grey') {
-  return new EmbedBuilder()
-    .setTitle(title)
-    .setDescription(description)
-    .setColor(color)
-    .setTimestamp();
+function createLogEmbed(title, description, color = "Grey") {
+  return new EmbedBuilder().setTitle(title).setDescription(description).setColor(color).setTimestamp();
 }
 
 // باند
-client.on('guildBanAdd', async (ban) => {
-  const channel = client.channels.cache.get(logChannels.banLogChannelId);
+client.on("guildBanAdd", async (ban) => {
+  const channel = client.channels.cache.get(config.logChannels.banLogChannelId);
   if (!channel) return;
   const fetchedLogs = await ban.guild.fetchAuditLogs({ type: AuditLogEvent.MemberBanAdd, limit: 1 });
   const banLog = fetchedLogs.entries.find(entry => entry.target.id === ban.user.id);
   const executor = banLog?.executor;
-  const reason = banLog?.reason || 'لم يتم تحديد السبب';
-  const embed = createLogEmbed('🚫 تم حظر عضو', `تم حظر **${ban.user.tag}** بواسطة ${executor?.tag || 'مجهول'}\n**السبب:** ${reason}`, 'Red');
+  const reason = banLog?.reason || "لم يتم تحديد السبب";
+  const embed = createLogEmbed("🚫 تم حظر عضو", `تم حظر **${ban.user.tag}** بواسطة ${executor?.tag || "مجهول"}\n**السبب:** ${reason}`, "Red");
   channel.send({ embeds: [embed] });
 });
 
@@ -466,17 +504,6 @@ client.on('channelDelete', async channelDeleted => {
     logChannel.send({ embeds: [embed] });
   }
 
-  // حماية ضد حذف روم
-  if (executor && !executor.permissions?.has(PermissionsBitField.Flags.Administrator)) {
-    const member = await channelDeleted.guild.members.fetch(executor.id);
-    if (member) {
-      member.roles.set([]).catch(() => {});
-      const protection = channelDeleted.guild.channels.cache.get(logChannels.protectionLogChannelId);
-      protection?.send(`🚨 تم سحب صلاحيات **${executor.tag}** بسبب حذف روم بدون إذن.`);
-    }
-  }
-});
-
 client.on('channelCreate', async channel => {
   const logs = await channel.guild.fetchAuditLogs({ type: AuditLogEvent.ChannelCreate, limit: 1 });
   const executor = logs.entries.first()?.executor;
@@ -500,14 +527,6 @@ client.on('roleDelete', async role => {
   const embed = createLogEmbed('⚠️ حذف رتبة', `تم حذف رتبة **${role.name}** بواسطة ${executor?.tag || 'مجهول'}`, 'Red');
   const logChannel = client.channels.cache.get(logChannels.roleDeleteLogChannelId);
   logChannel?.send({ embeds: [embed] });
-
-  if (executor && !executor.permissions?.has(PermissionsBitField.Flags.Administrator)) {
-    const member = await role.guild.members.fetch(executor.id);
-    member?.roles.set([]).catch(() => {});
-    const protection = role.guild.channels.cache.get(logChannels.protectionLogChannelId);
-    protection?.send(`🚨 تم سحب صلاحيات **${executor.tag}** بسبب حذف رتبة بدون إذن.`);
-  }
-});
 
 client.on('roleCreate', async role => {
   const logs = await role.guild.fetchAuditLogs({ type: AuditLogEvent.RoleCreate, limit: 1 });
@@ -573,166 +592,110 @@ client.on('messageUpdate', async (oldMessage, newMessage) => {
     channel.send({ embeds: [embed] });
   }
 });
+---------------------------------------------------------------------------------
 let db;
 (async () => {
-    try {
-        db = await open({
-            filename: './leveling.db',
-            driver: sqlite3.Database
-        });
-
-        await db.run('CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, level INTEGER, xp INTEGER)');
-        console.log('Database ready!');
-    } catch (err) {
-        console.error('Database error:', err);
-    }
-})();
-
-// الدالة لحساب الـ XP المطلوب للترقية
-function getRequiredXP(level) {
-    return level * level * 100;
-}
-
-// دالة إرسال رسالة الترقي
-async function sendLevelUpMessage(userId, newLevel) {
-    try {
-        const channel = await client.channels.fetch(config.levelUpChannelId);
-        const embed = new EmbedBuilder()
-            .setColor('#00ff00')
-            .setTitle('Level Up!')
-            .setDescription(`<@${userId}> has reached level ${newLevel}! 🎉`)
-            .setTimestamp();
-
-        await channel.send({ embeds: [embed] });
-
-        if (config.levelRoles[newLevel]) {
-            const guild = channel.guild;
-            const member = await guild.members.fetch(userId);
-            const role = await guild.roles.fetch(config.levelRoles[newLevel]);
-            if (role) await member.roles.add(role);
-        }
-    } catch (err) {
-        console.error('Error in sendLevelUpMessage:', err);
-    }
-}
-
-// دالة تحديث XP للمستخدم
-async function updateUserXP(userId, xpToAdd) {
-    try {
-        const row = await db.get('SELECT * FROM users WHERE id = ?', userId);
-
-        if (row) {
-            let newXP = row.xp + xpToAdd;
-            let newLevel = row.level;
-            let leveledUp = false;
-
-            while (newXP >= getRequiredXP(newLevel)) {
-                newXP -= getRequiredXP(newLevel);
-                newLevel++;
-                leveledUp = true;
-            }
-
-            if (leveledUp) await sendLevelUpMessage(userId, newLevel);
-
-            await db.run('UPDATE users SET xp = ?, level = ? WHERE id = ?', newXP, newLevel, userId);
-        } else {
-            await db.run('INSERT INTO users (id, level, xp) VALUES (?, ?, ?)', userId, 1, xpToAdd);
-        }
-    } catch (err) {
-        console.error('Error updating XP:', err);
-    }
-}
-
-// دوال الحصول على بيانات المستخدم وترتيبه
-async function getUserData(userId) {
-    return await db.get('SELECT * FROM users WHERE id = ?', userId);
-}
-
-async function getUserRank(userId) {
-    const users = await db.all('SELECT * FROM users ORDER BY level DESC, xp DESC');
-    return users.findIndex(u => u.id === userId) + 1;
-}
-
-async function getTopUsers(limit = 10) {
-    return await db.all('SELECT * FROM users ORDER BY level DESC, xp DESC LIMIT ?', limit);
-}
-
-// دوال إنشاء Embed
-function createRankEmbed(user, userData, rank) {
-    return new EmbedBuilder()
-        .setColor('#0099ff')
-        .setTitle(`${user.username}'s Rank`)
-        .addFields(
-            { name: 'Rank', value: `#${rank}`, inline: true },
-            { name: 'Level', value: `${userData.level}`, inline: true },
-            { name: 'XP', value: `${userData.xp}`, inline: true }
-        )
-        .setTimestamp();
-}
-
-function createXPEmbed(users) {
-    const embed = new EmbedBuilder()
-        .setColor('#0099ff')
-        .setTitle('XP Leaderboard')
-        .setDescription('Top users by XP')
-        .setTimestamp();
-
-    users.forEach((user, index) => {
-        embed.addFields({
-            name: `${index + 1}. ${user.id}`,
-            value: `Level: ${user.level} | XP: ${user.xp}`
-        });
+  try {
+    db = await open({
+      filename: "./leveling.db",
+      driver: sqlite3.Database
     });
 
-    return embed;
+    await db.run("CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, level INTEGER, xp INTEGER)");
+    console.log("Database ready!");
+  } catch (err) {
+    console.error("Database error:", err);
+  }
+})();
+
+function getRequiredXP(level) {
+  return level * level * 100;
 }
 
-// دالة إعادة تعيين XP للمستخدم
-async function resetUserXP(userId) {
-    await db.run('UPDATE users SET xp = 0, level = 1 WHERE id = ?', userId);
+async function sendLevelUpMessage(userId, newLevel) {
+  try {
+    const channel = await client.channels.fetch(config.levelUpChannelId);
+    const embed = new EmbedBuilder()
+      .setColor("#00ff00")
+      .setTitle("Level Up!")
+      .setDescription(`<@${userId}> has reached level ${newLevel}! 🎉`)
+      .setTimestamp();
+
+    await channel.send({ embeds: [embed] });
+
+    if (config.levelRoles[newLevel]) {
+      const guild = channel.guild;
+      const member = await guild.members.fetch(userId);
+      const role = await guild.roles.fetch(config.levelRoles[newLevel]);
+      if (role) await member.roles.add(role);
+    }
+  } catch (err) {
+    console.error("Error in sendLevelUpMessage:", err);
+  }
 }
 
-// أحداث البوت
-client.on('messageCreate', async message => {
-    if (message.author.bot) return;
+async function updateUserXP(userId, xpToAdd) {
+  try {
+    const row = await db.get("SELECT * FROM users WHERE id = ?", userId);
 
-    // إضافة XP لكل رسالة عادية
-    if (!message.content.startsWith('!') && message.channel.id !== config.levelUpChannelId) {
-        await updateUserXP(message.author.id, 10);
-    }
+    if (row) {
+      let newXP = row.xp + xpToAdd;
+      let newLevel = row.level;
+      let leveledUp = false;
 
-    // أوامر البوت
-    if (message.content === '!xp') {
-        const topUsers = await getTopUsers();
-        const embed = createXPEmbed(topUsers);
-        message.channel.send({ embeds: [embed] });
-    }
+      while (newXP >= getRequiredXP(newLevel)) {
+        newXP -= getRequiredXP(newLevel);
+        newLevel++;
+        leveledUp = true;
+      }
 
-    if (message.content.startsWith('!clear')) {
-        if (message.member.permissions.has('Administrator')) {
-            const args = message.content.split(' ');
-            if (args[1]) {
-                await resetUserXP(args[1]);
-                message.channel.send(`XP and level reset for user with ID: ${args[1]}`);
-            } else {
-                message.channel.send('Usage: !clear <userId>');
-            }
-        } else {
-            message.channel.send('You do not have permission to use this command.');
-        }
+      if (leveledUp) await sendLevelUpMessage(userId, newLevel);
+      await db.run("UPDATE users SET xp = ?, level = ? WHERE id = ?", newXP, newLevel, userId);
+    } else {
+      await db.run("INSERT INTO users (id, level, xp) VALUES (?, ?, ?)", userId, 1, xpToAdd);
     }
+  } catch (err) {
+    console.error("Error updating XP:", err);
+  }
+}
 
-    if (message.content === '!rank') {
-        const userData = await getUserData(message.author.id);
-        if (userData) {
-            const rank = await getUserRank(message.author.id);
-            const embed = createRankEmbed(message.author, userData, rank);
-            message.channel.send({ embeds: [embed] });
-        } else {
-            message.channel.send("You don't have any XP yet.");
-        }
+client.on("messageCreate", async message => {
+  if (message.author.bot) return;
+
+  if (!message.content.startsWith("!") && message.channel.id !== config.levelUpChannelId) {
+    await updateUserXP(message.author.id, 10);
+  }
+
+  if (message.content === "!xp") {
+    const users = await db.all("SELECT * FROM users ORDER BY level DESC, xp DESC LIMIT 10");
+    const embed = new EmbedBuilder().setColor("#0099ff").setTitle("XP Leaderboard").setDescription("Top users by XP").setTimestamp();
+    users.forEach((user, index) => {
+      embed.addFields({ name: `${index + 1}. ${user.id}`, value: `Level: ${user.level} | XP: ${user.xp}` });
+    });
+    message.channel.send({ embeds: [embed] });
+  }
+
+  if (message.content === "!rank") {
+    const row = await db.get("SELECT * FROM users WHERE id = ?", message.author.id);
+    if (row) {
+      const users = await db.all("SELECT * FROM users ORDER BY level DESC, xp DESC");
+      const rank = users.findIndex(u => u.id === message.author.id) + 1;
+      const embed = new EmbedBuilder()
+        .setColor("#0099ff")
+        .setTitle(`${message.author.username}'s Rank`)
+        .addFields(
+          { name: "Rank", value: `#${rank}`, inline: true },
+          { name: "Level", value: `${row.level}`, inline: true },
+          { name: "XP", value: `${row.xp}`, inline: true }
+        );
+      message.channel.send({ embeds: [embed] });
+    } else {
+      message.channel.send("You don't have any XP yet.");
     }
+  }
 });
+
+---------------------------------------------------------------------------------
 client.once("ready", () => {
     console.log(`✅ Logged in as ${client.user.tag}`);
 
@@ -749,4 +712,5 @@ client.once("ready", () => {
 });
 
 client.login(TOKEN);
+
 
