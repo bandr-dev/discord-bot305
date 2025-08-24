@@ -367,17 +367,18 @@ client.on("messageCreate", async (message) => {
     await member.timeout(time, `Timeout by ${message.author.tag}`);
     return sendBoth(message, `✅ تم إعطاء ${member.user.tag} تايم أوت.`, `✅ Timeout given to ${member.user.tag}.`);
   }
-
-  if (command === "نشر") {
+  if (command === "قوانين") {
+    if (args.length === 0) return message.reply("❌ اكتب محتوى القوانين بعد الأمر.");
     const content = args.join(" ");
-    if (!content) return message.reply("❌ اكتب القوانين بعد الأمر.");
 
     await message.delete().catch(() => {});
 
     const embed = new EmbedBuilder()
-      .setAuthor({ name: message.guild.name, iconURL: message.guild.iconURL() || null })
+      .setTitle("📜 قوانين السيرفر")
       .setDescription(content)
-      .setColor("#2F3136")
+      .setColor("Blue")
+      .setThumbnail(message.guild.iconURL())
+      .setImage(config.serverImageUrl)
       .setTimestamp();
 
     const row = new ActionRowBuilder().addComponents(
@@ -390,7 +391,34 @@ client.on("messageCreate", async (message) => {
     message.channel.send({ embeds: [embed], components: [row] });
   }
 
-  if (command === "send") {
+  if (command === "اعلان") {
+    if (args.length === 0) return message.reply("❌ اكتب محتوى الإعلان بعد الأمر.");
+    const content = args.join(" ");
+
+    await message.delete().catch(() => {});
+
+    const embed = new EmbedBuilder()
+      .setTitle("📢 إعلان مجتمع C4")
+      .setDescription(content)
+      .setColor("Black")
+      .setThumbnail(message.guild.iconURL())
+      .setImage(config.serverImageUrl)
+      .setTimestamp();
+
+    message.channel.send({ embeds: [embed] });
+  }
+});
+
+// تفاعل زر القوانين
+client.on("interactionCreate", async (interaction) => {
+  if (!interaction.isButton()) return;
+  if (interaction.customId === "accept_rules") {
+    await interaction.reply({ content: "✅ لقد وافقت على القوانين بنجاح.", ephemeral: true });
+    await interaction.member.roles.add(config.rulesRoleId).catch(console.error);
+  }
+});
+
+  if (command === "say") {
     const content = args.join(" ");
     if (!content) return message.reply("❌ اكتب الرسالة بعد الأمر.");
 
@@ -731,4 +759,5 @@ client.once("ready", () => {
 });
 
 client.login(TOKEN);
+
 
