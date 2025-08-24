@@ -182,28 +182,11 @@ client.on("messageCreate", async message => {
   }
 });
 
-// -------------------------------------------------------------------------------------------
+// ================== Welcome & Invite System ==================
 
-// باقي الكود (الترحيب، الأوامر، اللوق، XP system) لازم يتعدل بنفس الأسلوب:
-// - استبدال Discord.MessageEmbed → EmbedBuilder
-// - استبدال MessageActionRow → ActionRowBuilder
-// - استبدال MessageButton → ButtonBuilder
-// - إضافة الأقواس الناقصة }); لكل event
-// - استخدام config.logChannels بدل logChannels مباشرة
+const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 
-client.once("ready", () => {
-  console.log(`✅ Logged in as ${client.user.tag}`);
-  client.user.setPresence({
-    activities: [{ name: "ｂａｎｄａｒ．ｄｅｖ", type: 3 }],
-    status: "dnd",
-  });
-});
-
-client.login(TOKEN);
-
-
-// -------------------------------------------------------------------------------------------
-
+const invites = new Map();
 
 const getInviteCounts = async (guild) => {
     return new Map(guild.invites.cache.map(invite => [invite.code, invite.uses]));
@@ -211,14 +194,14 @@ const getInviteCounts = async (guild) => {
 
 client.once('ready', async () => {
     console.log('Bot is online!');
-	console.log('Code by bandar.dev!');
-	console.log('https://discord.gg/Y7ysBGFtQs');
+    console.log('Code by bandar.dev!');
+    console.log('https://discord.gg/Y7ysBGFtQs');
 
     // Load all server invites
     for (const [guildId, guild] of client.guilds.cache) {
         try {
             const currentInvites = await guild.invites.fetch();
-            invites[guildId] = new Map(currentInvites.map(invite => [invite.code, invite.uses]));
+            invites.set(guildId, new Map(currentInvites.map(invite => [invite.code, invite.uses])));
             console.log(`Loaded ${currentInvites.size} invites for guild: ${guild.name}`);
         } catch (err) {
             console.log(`Failed to load invites for guild: ${guild.name}`);
@@ -228,20 +211,19 @@ client.once('ready', async () => {
 });
 
 client.on('inviteCreate', async invite => {
-    const guildInvites = invites[invite.guild.id];
-    guildInvites.set(invite.code, invite.uses);
+    const guildInvites = invites.get(invite.guild.id);
+    if (guildInvites) guildInvites.set(invite.code, invite.uses);
 });
 
 client.on('inviteDelete', async invite => {
-    const guildInvites = invites[invite.guild.id];
-    guildInvites.delete(invite.code);
+    const guildInvites = invites.get(invite.guild.id);
+    if (guildInvites) guildInvites.delete(invite.code);
 });
 
 client.on('guildMemberAdd', async member => {
     const welcomeChannel = member.guild.channels.cache.get(config.welcomeChannelId);
     const role = member.guild.roles.cache.get(config.autoRoleId);
 
-    
     if (role) {
         member.roles.add(role).catch(console.error);
     } else {
@@ -250,7 +232,7 @@ client.on('guildMemberAdd', async member => {
 
     const newInvites = await member.guild.invites.fetch();
     const usedInvite = newInvites.find(inv => {
-        const prevUses = (invites[member.guild.id].get(inv.code) || 0);
+        const prevUses = (invites.get(member.guild.id)?.get(inv.code) || 0);
         return inv.uses > prevUses;
     });
 
@@ -262,56 +244,56 @@ client.on('guildMemberAdd', async member => {
         console.log(`Member joined, but no matching invite was found.`);
     }
 
-    
-    const fullUser = await client.users.fetch(member.user.id, { force: true });
-
-    const welcomeEmbed = new Discord.MessageEmbed()
+    const welcomeEmbed = new EmbedBuilder()
         .setColor('#05131f')
         .setTitle('Welcome to the Server!')
-        .setDescription(`Hello ${member}, welcome to **${member.guild.name}**! enjoy your stay.`)
+        .setDescription(`Hello ${member}, welcome to **${member.guild.name}**! Enjoy your stay.`)
         .addFields(
             { name: 'Username', value: member.user.tag, inline: true },
             { name: 'Invited By', value: inviterMention, inline: true },
             { name: 'Invite Used', value: usedInvite ? `||${usedInvite.code}||` : 'Direct Join', inline: true },
-            { name: 'You\'re Member', value: `${member.guild.memberCount}`, inline: true },
+            { name: "You're Member", value: `${member.guild.memberCount}`, inline: true },
             { name: 'Server Rules', value: '<#1164662648080707604>.', inline: true },
             { name: 'Support Channel', value: '<#1166772582951964702>.', inline: true }
         )
         .setThumbnail(member.user.displayAvatarURL())
         .setTimestamp();
-    const bannerUrl = fullUser.bannerURL({ dynamic: true, format: 'png', size: 1024 });
-    if (bannerUrl) {
-        welcomeEmbed.setImage(bannerUrl);
+
+    const bannerUrl = member.user.bannerURL?.({ dynamic: true, format: 'png', size: 1024 });
+    if (bannerUrl) welcomeEmbed.setImage(bannerUrl);
+
+    // Buttons
+    const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+            .setStyle(ButtonStyle.Link)
+            .setURL('https://www.youtube.com/@wick_studio')
+            .setLabel('YouTube')
+            .setEmoji('🎬'),
+        new ButtonBuilder()
+            .setStyle(ButtonStyle.Link)
+            .setURL('https://github.com/wickstudio')
+            .setLabel('GitHub')
+            .setEmoji('💻'),
+        new ButtonBuilder()
+            .setStyle(ButtonStyle.Link)
+            .setURL('https://wickdev.xyz/')
+            .setLabel('Website')
+            .setEmoji('🌐')
+    );
+
+    if (welcomeChannel) {
+        welcomeChannel.send({ embeds: [welcomeEmbed], components: [row] }).catch(console.error);
     }
 
-    // buttons
-    const row = new MessageActionRow()
-        .addComponents(
-            new MessageButton()
-                .setStyle('LINK')
-                .setURL('https://www.youtube.com/@wick_studio')       // link to button 1
-                .setLabel('YouTube')                                 // name of button 1
-                .setEmoji('<:Youtubee:1158819353953828984>'),       // emoji of button 1
-            new MessageButton()
-                .setStyle('LINK')
-                .setURL('https://github.com/wickstudio')           // link to button 2
-                .setLabel('GitHub')                               // name of button 2
-                .setEmoji('<:Github:1132413518348566589>'),      // emoji of button 2
-            new MessageButton()
-                .setStyle('LINK')
-                .setURL('https://wickdev.xyz/')                // link to button 3
-                .setLabel('Website')                          // name of button 3
-                .setEmoji('<:web:1129345172333932595>')      // emoji of button 3
-        );
-
-    welcomeChannel.send({ embeds: [welcomeEmbed], components: [row] });
-
-    invites[member.guild.id] = new Map(newInvites.map(invite => [invite.code, invite.uses]));
+    // Update invite cache
+    invites.set(member.guild.id, new Map(newInvites.map(invite => [invite.code, invite.uses])));
 });
 
-function sendBoth(arabic, english) {
-  return message.reply({ content: `${arabic}\n${english}` });
+// Corrected sendBoth function
+function sendBoth(message, arabic, english) {
+    return message.reply({ content: `${arabic}\n${english}` });
 }
+
 
 // -------------------------------------------------------------------------------------------
 
@@ -738,3 +720,4 @@ client.once("ready", () => {
 });
 
 client.login(TOKEN);
+
