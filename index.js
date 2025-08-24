@@ -23,67 +23,6 @@ const client = new Client({
   ],
   partials: [Partials.Message, Partials.Channel, Partials.Reaction],
 });
-{
-  "ownerId": "1114668397725220954",
-  "logChannelId": "1196376675055845426",
-  "adminRoleIds": [
-    "1319779381471608932",
-    "1350649812642435112",
-    "1399059261857992806",
-    "1376825337056333884",
-    "1401722722534428732"
-  ],
-  "bypassRoleIds": [
-    "1319779381471608932"
-  ],
-  "emojiSpamLimit": 10,
-  "spamLimit": 10,
-  "timeWindow": 10000,
-  "punishDurations": {
-    "nuke": 604800000,
-    "other": 86400000
-  },
-  "badWords": [
-    "كلب","قحبة","خنيث","حقير","زق","يلعن","عاهرة","نجس","متناك","كس امك",
-    "ابن كلب","ابن قحبة","يا وغد","يا حمار","سافل","وضيع","غبي","مغفل","تافه","مخادع",
-    "حقير","جبان","جبانة","منافق","خسيس","رديء","سافل","حقير","متعجرف","منافق",
-    "لعين","مغتصب","مدمن","مدمنة","ساقط","شرير","شريرة","زانية","زاني","خائن","خائنة",
-    "متعجرف","قذر","نجس","قذر","حقود","متسلط","حقير النفس","متكبر","حقود القلب"
-  ],
-  "levelUpChannelId": "1402972335681699914",
-  "levelRoles": {
-    "1": "1398390473940533440",
-    "2": "1398390604656021685",
-    "3": "1398391678846632019",
-    "4": "1398390655398445239",
-    "5": "1398390676097470584",
-    "6": "1398390698696245363",
-    "7": "1398391775667814400"
-  },
-  "welcomeChannelId": "1195476297133084733",
-  "autoRoleId": "1054383146872864879",
-  "logChannels": {
-    "banLogChannelId": "1196375859104317461",
-    "unbanLogChannelId": "1196376525461786734",
-    "memberRemoveLogChannelId": "1196376358348140544",
-    "messageDeleteLogChannelId": "1196376149702475818",
-    "messageUpdateLogChannelId": "1196376203460870195",
-    "channelDeleteLogChannelId": "1196376095969255455",
-    "channelCreateLogChannelId": "1196376023693013172",
-    "channelUpdateLogChannelId": "1196376605208096818",
-    "roleDeleteLogChannelId": "1196376183575674880",
-    "roleCreateLogChannelId": "1196376068882448444",
-    "roleUpdateLogChannelId": "1196376630411673650",
-    "nicknameUpdateLogChannelId": "1196376380351451208",
-    "voiceLogChannelId": "1196376765401153586",
-    "timeoutLogChannelId": "1196375994232225802",
-    "kickLogChannelId": "1196376279646228511",
-    "protectionLogChannelId": "1196376675055845426",
-    "inviteLogChannelId": "1196376497338986517",
-    "guildUpdateLogChannelId": "1209859968560537620"
-  },
-  "nukePunishmentRoleId": "1401676811448094850"
-}
 
 const prefix = '&';
 const invites = new Map();
@@ -771,6 +710,7 @@ client.once("ready", () => {
 });
 
 client.login(TOKEN);
+
 
 
 
