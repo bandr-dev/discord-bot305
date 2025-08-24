@@ -604,12 +604,26 @@ client.on('messageUpdate', async (oldMessage, newMessage) => {
     channel.send({ embeds: [embed] });
   }
 });
+const sqlite3 = require('sqlite3');
+const { open } = require('sqlite'); // ← هذا مهم
+
 let db;
-open({ filename: './leveling.db', driver: sqlite3.Database })
-    .then(database => {
-        db = database;
-        return db.run('CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, level INTEGER, xp INTEGER)');
-    })
+
+(async () => {
+    try {
+        db = await open({
+            filename: './leveling.db',
+            driver: sqlite3.Database
+        });
+
+        await db.run('CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, level INTEGER, xp INTEGER)');
+        console.log('Database ready!');
+catch (err) {
+    console.error('Database error:', err);
+}
+
+})();
+
     .catch(console.error);
 function getRequiredXP(level) {
     return level * level * 100;
@@ -776,6 +790,7 @@ client.once("ready", () => {
 });
 
 client.login(TOKEN);
+
 
 
 
