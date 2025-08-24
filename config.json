@@ -33,8 +33,9 @@
   "autoRoleId": "1054383146872864879",
   "rulesRoleId": "1405417400614260756",
   "roleIds": {
-    "fullAccess": "YOUR_ROLE_ID",
-    "mediumAccess": "YOUR_ROLE_ID"
+    "SERVEROWNER": "1319779381471608932",
+    "fullAccess": "1209871038284832908",
+    "mediumAccess": "1195472593541673031"
   },
   "logChannels": {
     "banLogChannelId": "1196375859104317461",
@@ -58,3 +59,4 @@
   },
   "nukePunishmentRoleId": "1401676811448094850"
 }
+
