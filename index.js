@@ -245,14 +245,14 @@ client.on('guildMemberAdd', async member => {
     const welcomeEmbed = new EmbedBuilder()
         .setColor('#05131f')
         .setTitle('Welcome to the Server!')
-        .setDescription(`Hello ${member}, welcome to **${member.guild.name}**! Enjoy your stay.`)
+        .setDescription(`مرحباً ${member}، أهلاً بك في **${member.guild.name}**! نتمنى لك إقامة ممتعة.`)
         .addFields(
             { name: 'Username', value: member.user.tag, inline: true },
             { name: 'Invited By', value: inviterMention, inline: true },
             { name: 'Invite Used', value: usedInvite ? `||${usedInvite.code}||` : 'Direct Join', inline: true },
             { name: "You're Member", value: `${member.guild.memberCount}`, inline: true },
-            { name: 'Server Rules', value: '<#1164662648080707604>.', inline: true },
-            { name: 'Support Channel', value: '<#1166772582951964702>.', inline: true }
+            { name: 'القوانين', value: '<#1402972324814389309>.', inline: true },
+            { name: 'لتواصل مع الدعم', value: '<#1400602479728656434>.', inline: true }
         )
         .setThumbnail(member.user.displayAvatarURL())
         .setTimestamp();
@@ -264,19 +264,19 @@ client.on('guildMemberAdd', async member => {
     const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
             .setStyle(ButtonStyle.Link)
-            .setURL('https://www.youtube.com/@wick_studio')
-            .setLabel('YouTube')
-            .setEmoji('🎬'),
+            .setURL('https://discord.gg/jyVCzFtJr2')
+            .setLabel('Chat')
+            .setEmoji('💬'),
         new ButtonBuilder()
             .setStyle(ButtonStyle.Link)
-            .setURL('https://github.com/wickstudio')
-            .setLabel('GitHub')
-            .setEmoji('💻'),
+            .setURL('https://discord.gg/VB7F34rWTf')
+            .setLabel('Games')
+            .setEmoji('🧮'),
         new ButtonBuilder()
             .setStyle(ButtonStyle.Link)
-            .setURL('https://wickdev.xyz/')
-            .setLabel('Website')
-            .setEmoji('🌐')
+            .setURL('https://discord.gg/TdnweETu9r')
+            .setLabel('Voice room')
+            .setEmoji('🎤')
     );
 
     if (welcomeChannel) {
@@ -731,3 +731,4 @@ client.once("ready", () => {
 });
 
 client.login(TOKEN);
+
