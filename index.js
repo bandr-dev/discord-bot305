@@ -264,14 +264,14 @@ client.on('guildMemberAdd', async member => {
     const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
             .setStyle(ButtonStyle.Link)
-            .setURL('https://discord.gg/jyVCzFtJr2')
-            .setLabel('Chat')
-            .setEmoji('💬'),
+            .setURL('https://discord.gg/QV2GNm72df')
+            .setLabel('FiveM')
+            .setEmoji('🎤'),
         new ButtonBuilder()
             .setStyle(ButtonStyle.Link)
-            .setURL('https://discord.gg/VB7F34rWTf')
-            .setLabel('Games')
-            .setEmoji('🧮'),
+            .setURL('https://discord.gg/8B4Cu2MW6z')
+            .setLabel('Risk')
+            .setEmoji('🎤'),
         new ButtonBuilder()
             .setStyle(ButtonStyle.Link)
             .setURL('https://discord.gg/TdnweETu9r')
@@ -763,6 +763,7 @@ client.once("clientReady", () => {
 });
 
 client.login(TOKEN);
+
 
 
 
