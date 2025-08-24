@@ -184,9 +184,7 @@ client.on("messageCreate", async message => {
 
 // ================== Welcome & Invite System ==================
 
-const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 
-const invites = new Map();
 
 const getInviteCounts = async (guild) => {
     return new Map(guild.invites.cache.map(invite => [invite.code, invite.uses]));
@@ -501,10 +499,17 @@ client.on('channelDelete', async channelDeleted => {
   const executor = logs.entries.first()?.executor;
   const reason = logs.entries.first()?.reason || 'لم يتم تحديد السبب';
   const logChannel = client.channels.cache.get(logChannels.channelDeleteLogChannelId);
+
   if (logChannel) {
-    const embed = createLogEmbed('❌ حذف روم', `**${channelDeleted.name}** تم حذفه بواسطة ${executor?.tag || 'مجهول'}\n**السبب:** ${reason}`, 'DarkRed');
+    const embed = createLogEmbed(
+      '❌ حذف روم',
+      `**${channelDeleted.name}** تم حذفه بواسطة ${executor?.tag || 'مجهول'}\n**السبب:** ${reason}`,
+      'DarkRed'
+    );
     logChannel.send({ embeds: [embed] });
   }
+}); // <- مهم إغلاق الحدث هنا
+
 
 client.on('channelCreate', async channel => {
   const logs = await channel.guild.fetchAuditLogs({ type: AuditLogEvent.ChannelCreate, limit: 1 });
@@ -526,9 +531,15 @@ client.on('channelUpdate', async (oldChannel, newChannel) => {
 client.on('roleDelete', async role => {
   const logs = await role.guild.fetchAuditLogs({ type: AuditLogEvent.RoleDelete, limit: 1 });
   const executor = logs.entries.first()?.executor;
-  const embed = createLogEmbed('⚠️ حذف رتبة', `تم حذف رتبة **${role.name}** بواسطة ${executor?.tag || 'مجهول'}`, 'Red');
+  const embed = createLogEmbed(
+    '⚠️ حذف رتبة',
+    `تم حذف رتبة **${role.name}** بواسطة ${executor?.tag || 'مجهول'}`,
+    'Red'
+  );
   const logChannel = client.channels.cache.get(logChannels.roleDeleteLogChannelId);
-  logChannel?.send({ embeds: [embed] });
+  if (logChannel) logChannel.send({ embeds: [embed] });
+}); // <- أغلق الحدث هنا
+
 
 client.on('roleCreate', async role => {
   const logs = await role.guild.fetchAuditLogs({ type: AuditLogEvent.RoleCreate, limit: 1 });
@@ -720,4 +731,3 @@ client.once("ready", () => {
 });
 
 client.login(TOKEN);
-
