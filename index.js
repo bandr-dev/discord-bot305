@@ -710,11 +710,11 @@ async function updateUserXP(userId, xpToAdd) {
 client.on("messageCreate", async message => {
   if (message.author.bot) return;
 
-  if (!message.content.startsWith("!") && message.channel.id !== config.levelUpChannelId) {
+  if (!message.content.startsWith("&") && message.channel.id !== config.levelUpChannelId) {
     await updateUserXP(message.author.id, 10);
   }
 
-  if (message.content === "!xp") {
+  if (message.content === "&xp") {
     const users = await db.all("SELECT * FROM users ORDER BY level DESC, xp DESC LIMIT 10");
     const embed = new EmbedBuilder().setColor("#0099ff").setTitle("XP Leaderboard").setDescription("Top users by XP").setTimestamp();
     users.forEach((user, index) => {
@@ -723,7 +723,7 @@ client.on("messageCreate", async message => {
     message.channel.send({ embeds: [embed] });
   }
 
-  if (message.content === "!rank") {
+  if (message.content === "&rank") {
     const row = await db.get("SELECT * FROM users WHERE id = ?", message.author.id);
     if (row) {
       const users = await db.all("SELECT * FROM users ORDER BY level DESC, xp DESC");
@@ -763,6 +763,7 @@ client.once("clientReady", () => {
 });
 
 client.login(TOKEN);
+
 
 
 
