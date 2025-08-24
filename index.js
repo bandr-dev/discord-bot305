@@ -395,7 +395,7 @@ client.on("messageCreate", async (message) => {
     message.channel.send({ embeds: [embed], components: [row] });
   }
 
-  if (command === "اعلان") {
+if (command === "اعلان") {
   if (args.length === 0) return message.reply("❌ اكتب محتوى الإعلان بعد الأمر.");
   const content = args.join(" ");
 
@@ -403,6 +403,8 @@ client.on("messageCreate", async (message) => {
 
   // نجيب قناة الإعلانات من الكونفق
   const announcementChannel = message.guild.channels.cache.get(config.announcementChannelId);
+  console.log("🔍 قناة الإعلانات:", announcementChannel?.id || "ما لقيت القناة");
+
   if (!announcementChannel) {
     return message.reply("❌ لم أجد قناة الإعلانات. تأكد من ID القناة في config.json");
   }
@@ -415,8 +417,10 @@ client.on("messageCreate", async (message) => {
     .setImage(config.serverImageUrl)
     .setTimestamp();
 
-  announcementChannel.send({ embeds: [embed] });
+  announcementChannel.send({ embeds: [embed] })
+    .catch(err => console.error("خطأ أثناء إرسال الإعلان:", err));
 }
+
 
 
   if (command === "say") {
@@ -768,5 +772,6 @@ client.once("ready", () => {
 });
 
 client.login(TOKEN);
+
 
 
