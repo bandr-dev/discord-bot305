@@ -84,7 +84,9 @@ client.on("guildAuditLogEntryCreate", async entry => {
     console.error("Anti-nuke error:", err);
   }
 });
--------------------------------------------------------------------------------------------
+
+// -------------------------------------------------------------------------------------------
+
 // مسح رسائل المستخدم
 async function deleteUserMessages(channel, userId) {
   const messages = await channel.messages.fetch({ limit: 30 });
@@ -132,7 +134,10 @@ async function logPunishment(guild, member, reason, content, duration, channelNa
 function sendBoth(message, arabic, english) {
   return message.reply({ content: `${arabic}\n${english}` });
 }
----------------------------------------------------------------------------------
+
+// -------------------------------------------------------------------------------------------
+
+
 client.on("messageCreate", async message => {
   if (message.author.bot || !message.guild) return;
   if (message.member.roles.cache.some(r => config.bypassRoleIds.includes(r.id))) return;
@@ -191,7 +196,10 @@ client.on("messageCreate", async message => {
     return;
   }
 });
------------------------------------------------------------------------------------------------------------------------
+
+// -------------------------------------------------------------------------------------------
+
+
 const getInviteCounts = async (guild) => {
     return new Map(guild.invites.cache.map(invite => [invite.code, invite.uses]));
 };
@@ -299,7 +307,10 @@ client.on('guildMemberAdd', async member => {
 function sendBoth(arabic, english) {
   return message.reply({ content: `${arabic}\n${english}` });
 }
----------------------------------------------------------------------------------
+
+// -------------------------------------------------------------------------------------------
+
+
 function hasPermission(member, command) {
   const roleIds = config.roleIds; // لازم تضيف roleIds في config.json
   const hasFull = member.roles.cache.has(roleIds.fullAccess);
@@ -426,7 +437,10 @@ client.on("messageCreate", async (message) => {
     `);
   }
 });
----------------------------------------------------------------------------------
+
+// -------------------------------------------------------------------------------------------
+
+
 // تفاعل زر القوانين
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isButton()) return;
@@ -593,7 +607,10 @@ client.on('messageUpdate', async (oldMessage, newMessage) => {
     channel.send({ embeds: [embed] });
   }
 });
----------------------------------------------------------------------------------
+
+// -------------------------------------------------------------------------------------------
+
+
 let db;
 (async () => {
   try {
@@ -696,7 +713,10 @@ client.on("messageCreate", async message => {
   }
 });
 
----------------------------------------------------------------------------------
+
+// -------------------------------------------------------------------------------------------
+
+
 client.once("ready", () => {
     console.log(`✅ Logged in as ${client.user.tag}`);
 
@@ -713,6 +733,7 @@ client.once("ready", () => {
 });
 
 client.login(TOKEN);
+
 
 
 
