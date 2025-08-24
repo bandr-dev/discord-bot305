@@ -757,8 +757,8 @@ client.on("messageCreate", async message => {
 // -------------------------------------------------------------------------------------------
 
 
-client.once("ready", () => {
-    console.log(`✅ Logged in as ${client.user.tag}`);
+client.once("clientReady", () => {
+  console.log(`✅ Logged in as ${client.user.tag}`);
 
     // هنا تضيف حالة البوت
     client.user.setPresence({
@@ -773,6 +773,7 @@ client.once("ready", () => {
 });
 
 client.login(TOKEN);
+
 
 
 
