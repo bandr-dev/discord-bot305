@@ -3,6 +3,8 @@ const {
   EmbedBuilder, AuditLogEvent, ActionRowBuilder, ButtonBuilder, ButtonStyle
 } = require("discord.js");
 
+const config = require("./config.json");
+
 const { open } = require("sqlite");
 const sqlite3 = require("sqlite3");
 
@@ -710,6 +712,7 @@ client.once("ready", () => {
 });
 
 client.login(TOKEN);
+
 
 
 
