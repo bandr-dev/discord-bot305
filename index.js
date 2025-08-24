@@ -604,11 +604,7 @@ client.on('messageUpdate', async (oldMessage, newMessage) => {
     channel.send({ embeds: [embed] });
   }
 });
-const sqlite3 = require('sqlite3');
-const { open } = require('sqlite'); // ← هذا مهم
-
 let db;
-
 (async () => {
     try {
         db = await open({
@@ -618,45 +614,44 @@ let db;
 
         await db.run('CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, level INTEGER, xp INTEGER)');
         console.log('Database ready!');
-catch (err) {
-    console.error('Database error:', err);
-}
-
+    } catch (err) {
+        console.error('Database error:', err);
+    }
 })();
 
-    .catch(console.error);
+// الدالة لحساب الـ XP المطلوب للترقية
 function getRequiredXP(level) {
     return level * level * 100;
 }
 
+// دالة إرسال رسالة الترقي
 async function sendLevelUpMessage(userId, newLevel) {
     try {
         const channel = await client.channels.fetch(config.levelUpChannelId);
         const embed = new EmbedBuilder()
             .setColor('#00ff00')
-            .setThumbnail('https://media.discordapp.net/attachments/1183588609975140422/1184367662214697071/R.png?ex=658bb757&is=65794257&hm=37b3d7b9482cffd8832e5f6b901d3ff5ceb8c91bd10cb94ed3371019098914a7&=&format=webp&quality=lossless&width=750&height=586')
             .setTitle('Level Up!')
-            .setDescription(`<@${userId}> has reached level ${newLevel}! Congratulations!`)
+            .setDescription(`<@${userId}> has reached level ${newLevel}! 🎉`)
             .setTimestamp();
+
         await channel.send({ embeds: [embed] });
 
         if (config.levelRoles[newLevel]) {
             const guild = channel.guild;
             const member = await guild.members.fetch(userId);
             const role = await guild.roles.fetch(config.levelRoles[newLevel]);
-            if (role) {
-                await member.roles.add(role);
-                console.log(`Assigned role ${role.name} to user ${userId} for reaching level ${newLevel}`);
-            }
+            if (role) await member.roles.add(role);
         }
-    } catch (error) {
-        console.error('Error in sendLevelUpMessage:', error);
+    } catch (err) {
+        console.error('Error in sendLevelUpMessage:', err);
     }
 }
 
+// دالة تحديث XP للمستخدم
 async function updateUserXP(userId, xpToAdd) {
     try {
         const row = await db.get('SELECT * FROM users WHERE id = ?', userId);
+
         if (row) {
             let newXP = row.xp + xpToAdd;
             let newLevel = row.level;
@@ -668,29 +663,76 @@ async function updateUserXP(userId, xpToAdd) {
                 leveledUp = true;
             }
 
-            if (leveledUp) {
-                await sendLevelUpMessage(userId, newLevel);
-            }
+            if (leveledUp) await sendLevelUpMessage(userId, newLevel);
 
             await db.run('UPDATE users SET xp = ?, level = ? WHERE id = ?', newXP, newLevel, userId);
-            console.log(`Updated XP for user ${userId}: Level ${newLevel}, XP ${newXP}`);
         } else {
             await db.run('INSERT INTO users (id, level, xp) VALUES (?, ?, ?)', userId, 1, xpToAdd);
-            console.log(`Inserted new user ${userId} with XP ${xpToAdd}`);
         }
-    } catch (error) {
-        console.error('Error updating user XP:', error);
+    } catch (err) {
+        console.error('Error updating XP:', err);
     }
 }
 
+// دوال الحصول على بيانات المستخدم وترتيبه
+async function getUserData(userId) {
+    return await db.get('SELECT * FROM users WHERE id = ?', userId);
+}
+
+async function getUserRank(userId) {
+    const users = await db.all('SELECT * FROM users ORDER BY level DESC, xp DESC');
+    return users.findIndex(u => u.id === userId) + 1;
+}
+
+async function getTopUsers(limit = 10) {
+    return await db.all('SELECT * FROM users ORDER BY level DESC, xp DESC LIMIT ?', limit);
+}
+
+// دوال إنشاء Embed
+function createRankEmbed(user, userData, rank) {
+    return new EmbedBuilder()
+        .setColor('#0099ff')
+        .setTitle(`${user.username}'s Rank`)
+        .addFields(
+            { name: 'Rank', value: `#${rank}`, inline: true },
+            { name: 'Level', value: `${userData.level}`, inline: true },
+            { name: 'XP', value: `${userData.xp}`, inline: true }
+        )
+        .setTimestamp();
+}
+
+function createXPEmbed(users) {
+    const embed = new EmbedBuilder()
+        .setColor('#0099ff')
+        .setTitle('XP Leaderboard')
+        .setDescription('Top users by XP')
+        .setTimestamp();
+
+    users.forEach((user, index) => {
+        embed.addFields({
+            name: `${index + 1}. ${user.id}`,
+            value: `Level: ${user.level} | XP: ${user.xp}`
+        });
+    });
+
+    return embed;
+}
+
+// دالة إعادة تعيين XP للمستخدم
+async function resetUserXP(userId) {
+    await db.run('UPDATE users SET xp = 0, level = 1 WHERE id = ?', userId);
+}
+
+// أحداث البوت
 client.on('messageCreate', async message => {
     if (message.author.bot) return;
 
+    // إضافة XP لكل رسالة عادية
     if (!message.content.startsWith('!') && message.channel.id !== config.levelUpChannelId) {
         await updateUserXP(message.author.id, 10);
     }
 
-
+    // أوامر البوت
     if (message.content === '!xp') {
         const topUsers = await getTopUsers();
         const embed = createXPEmbed(topUsers);
@@ -698,12 +740,11 @@ client.on('messageCreate', async message => {
     }
 
     if (message.content.startsWith('!clear')) {
-        if (message.member.permissions.has('ADMINISTRATOR')) {
+        if (message.member.permissions.has('Administrator')) {
             const args = message.content.split(' ');
-            if (args.length === 2) {
-                const userId = args[1];
-                await resetUserXP(userId);
-                message.channel.send(`XP and level reset for user with ID: ${userId}`);
+            if (args[1]) {
+                await resetUserXP(args[1]);
+                message.channel.send(`XP and level reset for user with ID: ${args[1]}`);
             } else {
                 message.channel.send('Usage: !clear <userId>');
             }
@@ -715,65 +756,14 @@ client.on('messageCreate', async message => {
     if (message.content === '!rank') {
         const userData = await getUserData(message.author.id);
         if (userData) {
-            const userRank = await getUserRank(message.author.id);
-            const embed = createRankEmbed(message.author, userData, userRank);
+            const rank = await getUserRank(message.author.id);
+            const embed = createRankEmbed(message.author, userData, rank);
             message.channel.send({ embeds: [embed] });
         } else {
             message.channel.send("You don't have any XP yet.");
         }
     }
 });
-
-async function getUserData(userId) {
-    return await db.get('SELECT * FROM users WHERE id = ?', userId);
-}
-
-async function getUserRank(userId) {
-    const users = await db.all('SELECT * FROM users ORDER BY xp DESC');
-    return users.findIndex(user => user.id === userId) + 1;
-}
-
-function createRankEmbed(user, userData, rank) {
-    const embed = new EmbedBuilder()
-        .setColor('#0099ff')
-        .setTitle(`${user.username}'s Rank`)
-        .addFields(
-            { name: 'Rank', value: `#${rank}`, inline: true },
-            { name: 'Level', value: `${userData.level}`, inline: true },
-            { name: 'XP', value: `${userData.xp}`, inline: true }
-        )
-        .setTimestamp();
-    return embed;
-}
-
-async function getTopUsers() {
-    return await db.all('SELECT * FROM users ORDER BY level DESC, xp DESC LIMIT 10');
-}
-
-function createXPEmbed(users) {
-    const embed = new EmbedBuilder()
-        .setColor('#0099ff')
-        .setThumbnail('https://media.discordapp.net/attachments/1179553732497784906/1184376574636732466/leaderboards-icon-15.png?ex=658bbfa4&is=65794aa4&hm=ef848c1583170f9c834ed33506e47f0329205e2060bf45a543242a34cf137f0f&=&format=webp&quality=lossless&width=675&height=675')
-        .setTitle('XP Leaderboard')
-        .setDescription('Top users by XP')
-        .setTimestamp();
-
-    users.forEach((user, index) => {
-        const userMention = `<@${user.id}>`;
-        embed.addFields({ 
-            name: `${index + 1}. ${user.id}`, 
-            value: `${userMention} - Level : ${user.level} | XP : ${user.xp}` 
-        });
-    });
-
-    return embed;
-}
-
-
-
-async function resetUserXP(userId) {
-    await db.run('UPDATE users SET xp = 0, level = 1 WHERE id = ?', userId);
-}
 client.once("ready", () => {
     console.log(`✅ Logged in as ${client.user.tag}`);
 
@@ -790,24 +780,3 @@ client.once("ready", () => {
 });
 
 client.login(TOKEN);
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
