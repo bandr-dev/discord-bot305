@@ -1,15 +1,16 @@
 {
   "name": "my-discord-bot",
   "version": "1.0.0",
+  "description": "A merged Discord bot with leveling, welcome messages",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
+  "author": "bandar.dev",
   "dependencies": {
     "discord.js": "^14.21.0",
-    "ffmpeg-static": "^5.2.0",
-    "google-tts-api": "^2.0.2",
-    "sqlite3": "^5.1.7"
+    "sqlite3": "^5.1.7",
+    "sqlite": "^5.0.0"
   },
   "engines": {
     "node": ">=16.0.0"
