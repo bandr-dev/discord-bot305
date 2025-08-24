@@ -30,6 +30,7 @@ const prefix = '&';
 const invites = new Map();
 const userMessages = new Map();
 
+
 // ================== Anti-Nuke Protection ==================
 client.on("guildAuditLogEntryCreate", async entry => {
   const destructiveActions = [
@@ -712,6 +713,7 @@ client.once("ready", () => {
 });
 
 client.login(TOKEN);
+
 
 
 
