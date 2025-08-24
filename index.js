@@ -466,186 +466,176 @@ client.on("interactionCreate", async (interaction) => {
   }
 });
 // -------------------------------------------------------------------------------------------
-
-
-// تفاعل زر القوانين
-client.on("interactionCreate", async (interaction) => {
-  if (!interaction.isButton()) return;
-
-  if (interaction.customId === "accept_rules") {
-    await interaction.reply({ content: "✅ لقد وافقت على القوانين بنجاح.", ephemeral: true });
-    await interaction.member.roles.add(config.rulesRoleId); // لازم تضيف rulesRoleId في config.json
-  }
-});
-
-client.on('interactionCreate', async (interaction) => {
-  if (!interaction.isButton()) return;
-
-  if (interaction.customId === 'accept_rules') {
-    await interaction.reply({ content: '✅ لقد وافقت على القوانين بنجاح.', ephemeral: true });
-
-    // تقدر تضيف له رتبة تلقائيًا هنا:
-   await interaction.member.roles.add('1405417400614260756');
-  }
-});
+// =================== Helper Function ===================
 function createLogEmbed(title, description, color = "Grey") {
-  return new EmbedBuilder().setTitle(title).setDescription(description).setColor(color).setTimestamp();
+  return new EmbedBuilder()
+    .setTitle(title)
+    .setDescription(description)
+    .setColor(color)
+    .setTimestamp();
 }
 
-// باند
+// =================== Bans ===================
 client.on("guildBanAdd", async (ban) => {
   const channel = client.channels.cache.get(config.logChannels.banLogChannelId);
   if (!channel) return;
-  const fetchedLogs = await ban.guild.fetchAuditLogs({ type: AuditLogEvent.MemberBanAdd, limit: 1 });
-  const banLog = fetchedLogs.entries.find(entry => entry.target.id === ban.user.id);
-  const executor = banLog?.executor;
-  const reason = banLog?.reason || "لم يتم تحديد السبب";
+  const logs = await ban.guild.fetchAuditLogs({ type: AuditLogEvent.MemberBanAdd, limit: 1 });
+  const entry = logs.entries.find(e => e.target.id === ban.user.id);
+  const executor = entry?.executor;
+  const reason = entry?.reason || "لم يتم تحديد السبب";
   const embed = createLogEmbed("🚫 تم حظر عضو", `تم حظر **${ban.user.tag}** بواسطة ${executor?.tag || "مجهول"}\n**السبب:** ${reason}`, "Red");
   channel.send({ embeds: [embed] });
 });
 
-// فك باند
-client.on('guildBanRemove', async (ban) => {
-  const channel = client.channels.cache.get(logChannels.unbanLogChannelId);
+client.on("guildBanRemove", async (ban) => {
+  const channel = client.channels.cache.get(config.logChannels.unbanLogChannelId);
   if (!channel) return;
   const logs = await ban.guild.fetchAuditLogs({ type: AuditLogEvent.MemberBanRemove, limit: 1 });
-  const entry = logs.entries.find(entry => entry.target.id === ban.user.id);
+  const entry = logs.entries.find(e => e.target.id === ban.user.id);
   const executor = entry?.executor;
-  const reason = entry?.reason || 'لم يتم تحديد السبب';
-  const embed = createLogEmbed('✅ تم رفع الحظر', `تم فك الحظر عن **${ban.user.tag}** بواسطة ${executor?.tag || 'مجهول'}\n**السبب:** ${reason}`, 'Green');
+  const reason = entry?.reason || "لم يتم تحديد السبب";
+  const embed = createLogEmbed("✅ تم رفع الحظر", `تم فك الحظر عن **${ban.user.tag}** بواسطة ${executor?.tag || "مجهول"}\n**السبب:** ${reason}`, "Green");
   channel.send({ embeds: [embed] });
 });
 
-// خروج أو طرد عضو
-client.on('guildMemberRemove', async member => {
+// =================== Member Remove / Kick ===================
+client.on("guildMemberRemove", async (member) => {
   const logs = await member.guild.fetchAuditLogs({ type: AuditLogEvent.MemberKick, limit: 1 });
-  const kickLog = logs.entries.find(entry => entry.target.id === member.id);
+  const kickLog = logs.entries.find(e => e.target.id === member.id);
   const executor = kickLog?.executor;
-  const reason = kickLog?.reason || 'لم يتم تحديد السبب';
-  const channel = client.channels.cache.get(logChannels.memberRemoveLogChannelId);
+  const reason = kickLog?.reason || "لم يتم تحديد السبب";
+  const channel = client.channels.cache.get(config.logChannels.memberRemoveLogChannelId);
   if (!channel) return;
 
   const embed = createLogEmbed(
-    kickLog ? '👢 طرد عضو' : '👋 خروج عضو',
-    kickLog 
-      ? `تم طرد **${member.user.tag}** بواسطة ${executor?.tag || 'مجهول'}\n**السبب:** ${reason}`
+    kickLog ? "👢 طرد عضو" : "👋 خروج عضو",
+    kickLog
+      ? `تم طرد **${member.user.tag}** بواسطة ${executor?.tag || "مجهول"}\n**السبب:** ${reason}`
       : `**${member.user.tag}** خرج من السيرفر.`,
-    kickLog ? 'Orange' : 'Grey'
+    kickLog ? "Orange" : "Grey"
   );
   channel.send({ embeds: [embed] });
 });
 
-// حذف/إنشاء/تعديل رومات
-client.on('channelDelete', async channelDeleted => {
+// =================== Channel ===================
+client.on("channelDelete", async (channelDeleted) => {
   const logs = await channelDeleted.guild.fetchAuditLogs({ type: AuditLogEvent.ChannelDelete, limit: 1 });
   const executor = logs.entries.first()?.executor;
-  const reason = logs.entries.first()?.reason || 'لم يتم تحديد السبب';
-  const logChannel = client.channels.cache.get(logChannels.channelDeleteLogChannelId);
+  const reason = logs.entries.first()?.reason || "لم يتم تحديد السبب";
+  const logChannel = client.channels.cache.get(config.logChannels.channelDeleteLogChannelId);
+  if (!logChannel) return;
 
-  if (logChannel) {
-    const embed = createLogEmbed(
-      '❌ حذف روم',
-      `**${channelDeleted.name}** تم حذفه بواسطة ${executor?.tag || 'مجهول'}\n**السبب:** ${reason}`,
-      'DarkRed'
-    );
-    logChannel.send({ embeds: [embed] });
-  }
-}); // <- مهم إغلاق الحدث هنا
+  const embed = createLogEmbed("❌ حذف روم", `**${channelDeleted.name}** تم حذفه بواسطة ${executor?.tag || "مجهول"}\n**السبب:** ${reason}`, "DarkRed");
+  logChannel.send({ embeds: [embed] });
+});
 
-
-client.on('channelCreate', async channel => {
+client.on("channelCreate", async (channel) => {
   const logs = await channel.guild.fetchAuditLogs({ type: AuditLogEvent.ChannelCreate, limit: 1 });
   const executor = logs.entries.first()?.executor;
-  const embed = createLogEmbed('✅ إنشاء روم', `**${channel.name}** تم إنشاؤه بواسطة ${executor?.tag || 'مجهول'}`, 'Green');
-  const logChannel = client.channels.cache.get(logChannels.channelCreateLogChannelId);
-  logChannel?.send({ embeds: [embed] });
+  const logChannel = client.channels.cache.get(config.logChannels.channelCreateLogChannelId);
+  if (!logChannel) return;
+
+  const embed = createLogEmbed("✅ إنشاء روم", `**${channel.name}** تم إنشاؤه بواسطة ${executor?.tag || "مجهول"}`, "Green");
+  logChannel.send({ embeds: [embed] });
 });
 
-client.on('channelUpdate', async (oldChannel, newChannel) => {
+client.on("channelUpdate", async (oldChannel, newChannel) => {
   const logs = await newChannel.guild.fetchAuditLogs({ type: AuditLogEvent.ChannelUpdate, limit: 1 });
   const executor = logs.entries.first()?.executor;
-  const embed = createLogEmbed('✏️ تعديل روم', `**${oldChannel.name}** تم تعديله بواسطة ${executor?.tag || 'مجهول'}`, 'Yellow');
-  const logChannel = client.channels.cache.get(logChannels.channelUpdateLogChannelId);
-  logChannel?.send({ embeds: [embed] });
+  const logChannel = client.channels.cache.get(config.logChannels.channelUpdateLogChannelId);
+  if (!logChannel) return;
+
+  const embed = createLogEmbed("✏️ تعديل روم", `**${oldChannel.name}** تم تعديله بواسطة ${executor?.tag || "مجهول"}`, "Yellow");
+  logChannel.send({ embeds: [embed] });
 });
 
-// حذف/إنشاء/تعديل رتب
-client.on('roleDelete', async role => {
+// =================== Roles ===================
+client.on("roleDelete", async (role) => {
   const logs = await role.guild.fetchAuditLogs({ type: AuditLogEvent.RoleDelete, limit: 1 });
   const executor = logs.entries.first()?.executor;
-  const embed = createLogEmbed(
-    '⚠️ حذف رتبة',
-    `تم حذف رتبة **${role.name}** بواسطة ${executor?.tag || 'مجهول'}`,
-    'Red'
-  );
-  const logChannel = client.channels.cache.get(logChannels.roleDeleteLogChannelId);
-  if (logChannel) logChannel.send({ embeds: [embed] });
-}); // <- أغلق الحدث هنا
+  const logChannel = client.channels.cache.get(config.logChannels.roleDeleteLogChannelId);
+  if (!logChannel) return;
 
+  const embed = createLogEmbed("⚠️ حذف رتبة", `تم حذف رتبة **${role.name}** بواسطة ${executor?.tag || "مجهول"}`, "Red");
+  logChannel.send({ embeds: [embed] });
+});
 
-client.on('roleCreate', async role => {
+client.on("roleCreate", async (role) => {
   const logs = await role.guild.fetchAuditLogs({ type: AuditLogEvent.RoleCreate, limit: 1 });
   const executor = logs.entries.first()?.executor;
-  const embed = createLogEmbed('✅ إنشاء رتبة', `تم إنشاء رتبة **${role.name}** بواسطة ${executor?.tag || 'مجهول'}`, 'Green');
-  const logChannel = client.channels.cache.get(logChannels.roleCreateLogChannelId);
-  logChannel?.send({ embeds: [embed] });
+  const logChannel = client.channels.cache.get(config.logChannels.roleCreateLogChannelId);
+  if (!logChannel) return;
+
+  const embed = createLogEmbed("✅ إنشاء رتبة", `تم إنشاء رتبة **${role.name}** بواسطة ${executor?.tag || "مجهول"}`, "Green");
+  logChannel.send({ embeds: [embed] });
 });
 
-client.on('roleUpdate', async (oldRole, newRole) => {
+client.on("roleUpdate", async (oldRole, newRole) => {
   const logs = await newRole.guild.fetchAuditLogs({ type: AuditLogEvent.RoleUpdate, limit: 1 });
   const executor = logs.entries.first()?.executor;
-  const embed = createLogEmbed('✏️ تعديل رتبة', `تم تعديل رتبة **${oldRole.name}** بواسطة ${executor?.tag || 'مجهول'}`, 'Yellow');
-  const logChannel = client.channels.cache.get(logChannels.roleUpdateLogChannelId);
-  logChannel?.send({ embeds: [embed] });
+  const logChannel = client.channels.cache.get(config.logChannels.roleUpdateLogChannelId);
+  if (!logChannel) return;
+
+  const embed = createLogEmbed("✏️ تعديل رتبة", `تم تعديل رتبة **${oldRole.name}** بواسطة ${executor?.tag || "مجهول"}`, "Yellow");
+  logChannel.send({ embeds: [embed] });
 });
 
-// تعديل نك نيم
-client.on('guildMemberUpdate', async (oldMember, newMember) => {
+// =================== Nickname / Timeout ===================
+client.on("guildMemberUpdate", async (oldMember, newMember) => {
+  // Nickname change
   if (oldMember.nickname !== newMember.nickname) {
     const logs = await newMember.guild.fetchAuditLogs({ type: AuditLogEvent.MemberUpdate, limit: 1 });
     const executor = logs.entries.first()?.executor;
+    const logChannel = client.channels.cache.get(config.logChannels.nicknameUpdateLogChannelId);
+    if (!logChannel) return;
+
     const embed = createLogEmbed(
-      '📝 تغيير نك نيم',
-      `**${newMember.user.tag}** تغير نكه بواسطة ${executor?.tag || 'مجهول'}\n**من:** ${oldMember.nickname || 'لا يوجد'} → **إلى:** ${newMember.nickname || 'لا يوجد'}`,
-      'Orange'
+      "📝 تغيير نك نيم",
+      `**${newMember.user.tag}** تغير نكه بواسطة ${executor?.tag || "مجهول"}\n**من:** ${oldMember.nickname || "لا يوجد"} → **إلى:** ${newMember.nickname || "لا يوجد"}`,
+      "Orange"
     );
-    const logChannel = client.channels.cache.get(logChannels.nicknameUpdateLogChannelId);
-    logChannel?.send({ embeds: [embed] });
+    logChannel.send({ embeds: [embed] });
   }
 
+  // Timeout change
   const oldTimeout = oldMember.communicationDisabledUntilTimestamp;
   const newTimeout = newMember.communicationDisabledUntilTimestamp;
   if (oldTimeout !== newTimeout) {
-    const channel = client.channels.cache.get(logChannels.timeoutLogChannelId);
+    const channel = client.channels.cache.get(config.logChannels.timeoutLogChannelId);
     if (!channel) return;
+
     if (newTimeout && newTimeout > Date.now()) {
       const until = new Date(newTimeout).toLocaleString();
-      const embed = createLogEmbed('⏳ تايم آوت مفعّل', `**${newMember.user.tag}** حصل على تايم آوت حتى ${until}`, 'Orange');
+      const embed = createLogEmbed("⏳ تايم آوت مفعّل", `**${newMember.user.tag}** حصل على تايم آوت حتى ${until}`, "Orange");
       channel.send({ embeds: [embed] });
     } else {
-      const embed = createLogEmbed('✅ تايم آوت مرفوع', `تم رفع التايم آوت عن **${newMember.user.tag}**`, 'Green');
+      const embed = createLogEmbed("✅ تايم آوت مرفوع", `تم رفع التايم آوت عن **${newMember.user.tag}**`, "Green");
       channel.send({ embeds: [embed] });
     }
   }
 });
 
-// لوق الرسائل
-client.on('messageDelete', async message => {
+// =================== Messages ===================
+client.on("messageDelete", async (message) => {
   if (!message.guild) return;
-  const channel = client.channels.cache.get(logChannels.messageDeleteLogChannelId);
-  if (channel) {
-    const embed = createLogEmbed('🗑️ حذف رسالة', `تم حذف رسالة من **${message.author?.tag || 'مجهول'}** في **${message.channel.name}**`, 'Grey');
-    channel.send({ embeds: [embed] });
-  }
+  const channel = client.channels.cache.get(config.logChannels.messageDeleteLogChannelId);
+  if (!channel) return;
+
+  const embed = createLogEmbed("🗑️ حذف رسالة", `تم حذف رسالة من **${message.author?.tag || "مجهول"}** في **${message.channel.name}**`, "Grey");
+  channel.send({ embeds: [embed] });
 });
 
-client.on('messageUpdate', async (oldMessage, newMessage) => {
+client.on("messageUpdate", async (oldMessage, newMessage) => {
   if (!newMessage.guild || oldMessage.content === newMessage.content) return;
-  const channel = client.channels.cache.get(logChannels.messageUpdateLogChannelId);
-  if (channel) {
-    const embed = createLogEmbed('✏️ تعديل رسالة', `**${newMessage.author?.tag}** عدّل رسالته:\n**قبل:** ${oldMessage.content || '...'}\n**بعد:** ${newMessage.content || '...'}`, 'Yellow');
-    channel.send({ embeds: [embed] });
-  }
+  const channel = client.channels.cache.get(config.logChannels.messageUpdateLogChannelId);
+  if (!channel) return;
+
+  const embed = createLogEmbed(
+    "✏️ تعديل رسالة",
+    `**${newMessage.author?.tag}** عدّل رسالته:\n**قبل:** ${oldMessage.content || "..."}\n**بعد:** ${newMessage.content || "..."}`,
+    "Yellow"
+  );
+  channel.send({ embeds: [embed] });
 });
 
 // -------------------------------------------------------------------------------------------
@@ -773,6 +763,7 @@ client.once("clientReady", () => {
 });
 
 client.login(TOKEN);
+
 
 
 
