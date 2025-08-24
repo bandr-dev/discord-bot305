@@ -295,7 +295,6 @@ function sendBoth(message, arabic, english) {
 
 // -------------------------------------------------------------------------------------------
 
-
 function hasPermission(member, command) {
   const roleIds = config.roleIds; // لازم تضيف roleIds في config.json
   const hasFull = member.roles.cache.has(roleIds.fullAccess);
@@ -316,7 +315,9 @@ client.on("messageCreate", async (message) => {
   const command = args.shift().toLowerCase();
   if (!hasPermission(message.member, command)) return message.reply("❌ ما عندك صلاحية استخدام هذا الأمر.");
 
-  if (command === "ping") return sendBoth(message, "🏓 البوت شغال تمام!", "🏓 Bot is up and running!");
+  if (command === "ping") {
+    return sendBoth(message, "🏓 البوت شغال تمام!", "🏓 Bot is up and running!");
+  }
 
   if (command === "lock" || command === "اقفل") {
     await message.channel.permissionOverwrites.edit(message.guild.roles.everyone, { SendMessages: false });
@@ -330,7 +331,9 @@ client.on("messageCreate", async (message) => {
 
   if (command === "مسح") {
     const amount = parseInt(args[0]);
-    if (!amount || amount < 1 || amount > 100) return sendBoth(message, "❌ رقم بين 1-100", "❌ Number between 1-100.");
+    if (!amount || amount < 1 || amount > 100) {
+      return sendBoth(message, "❌ رقم بين 1-100", "❌ Number between 1-100.");
+    }
     await message.channel.bulkDelete(amount, true);
     return sendBoth(message, `✅ تم حذف ${amount} رسالة.`, `✅ Deleted ${amount} messages.`);
   }
@@ -367,6 +370,7 @@ client.on("messageCreate", async (message) => {
     await member.timeout(time, `Timeout by ${message.author.tag}`);
     return sendBoth(message, `✅ تم إعطاء ${member.user.tag} تايم أوت.`, `✅ Timeout given to ${member.user.tag}.`);
   }
+
   if (command === "قوانين") {
     if (args.length === 0) return message.reply("❌ اكتب محتوى القوانين بعد الأمر.");
     const content = args.join(" ");
@@ -407,16 +411,6 @@ client.on("messageCreate", async (message) => {
 
     message.channel.send({ embeds: [embed] });
   }
-});
-
-// تفاعل زر القوانين
-client.on("interactionCreate", async (interaction) => {
-  if (!interaction.isButton()) return;
-  if (interaction.customId === "accept_rules") {
-    await interaction.reply({ content: "✅ لقد وافقت على القوانين بنجاح.", ephemeral: true });
-    await interaction.member.roles.add(config.rulesRoleId).catch(console.error);
-  }
-});
 
   if (command === "say") {
     const content = args.join(" ");
@@ -435,22 +429,30 @@ client.on("interactionCreate", async (interaction) => {
 
   if (command === "help" || command === "مساعدة") {
     await message.delete().catch(() => {});
-    return message.channel.send(`
-🔧 **Available Commands | الأوامر المتاحة:**
+    return message.channel.send(`🔧 **Available Commands | الأوامر المتاحة:**
 
 \`&ping\`
 \`&اقفل / &افتح\`
 \`&امسح 10\`
-\`&نشر @message\`
-\`&send @message\`
 \`&كيك @user\`
 \`&باند @user\`
-\`&فك-باند @user\`
+\`&فك-باند @userId\`
 \`&تايم-اوت @user 60000\`
+\`&قوانين <نص>\`
+\`&اعلان <نص>\`
+\`&say <نص>\`
     `);
   }
 });
 
+// تفاعل زر القوانين
+client.on("interactionCreate", async (interaction) => {
+  if (!interaction.isButton()) return;
+  if (interaction.customId === "accept_rules") {
+    await interaction.reply({ content: "✅ لقد وافقت على القوانين بنجاح.", ephemeral: true });
+    await interaction.member.roles.add(config.rulesRoleId).catch(console.error);
+  }
+});
 // -------------------------------------------------------------------------------------------
 
 
@@ -759,5 +761,4 @@ client.once("ready", () => {
 });
 
 client.login(TOKEN);
-
 
