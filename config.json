@@ -19,8 +19,8 @@
   "timeWindow": 10000,
 
   "punishDurations": {
-    "nuke": 604800000,       
-    "other": 86400000        
+    "nuke": 604800000,
+    "other": 86400000
   },
 
   "badWords": [
@@ -55,6 +55,6 @@
   "announcementChannelId": "1402972331680206942",
 
   "timeoutRoleId": "1401676811448094850",
-  "supportRoleId": "1401722722534428732"
+  "supportRoleId": "1401722722534428732",
+  "timeoutChannelId": "1409496930228113540"
 }
-
