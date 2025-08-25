@@ -31,131 +31,72 @@ const prefix = '&';
 const invites = new Map();
 const userMessages = new Map();
 
-// ================== ANTI-SPAM / ANTI-NUKE / TIMEOUT ==================
+// ================== ANTI-SPAM / FILTER ==================
 client.on("messageCreate", async message => {
   if (message.author.bot || !message.guild) return;
   if (message.member.roles.cache.some(r => config.bypassRoleIds.includes(r.id))) return;
 
   const content = message.content.toLowerCase();
+  const now = Date.now();
 
-  async function punishUser(reason, duration = config.punishDurations.other) {
+  // ==========================================
+  // دالة لمعاقبة العضو بالتايم أوت وإرسال DM
+  async function punishUser(reason, durationMs) {
     try {
-      await message.delete().catch(() => {});
-    } catch {}
+      const member = message.member;
 
-    const member = message.member;
+      // إعطاء تايم أوت للعضو
+      await member.timeout(durationMs, reason);
 
-    // إعطاء رتبة تايم أوت
-    if (config.timeoutRoleId && member.roles) {
-      await member.roles.add(config.timeoutRoleId).catch(console.error);
-    }
-
-    // إعطاء تايم أوت حقيقي
-    if (member.manageable) {
-      await member.timeout(duration, reason).catch(console.error);
-    }
-
-    // إرسال إشعار
-    const timeoutChannel = message.guild.channels.cache.get(config.timeoutChannelId);
-    if (timeoutChannel) {
-      const embed = new EmbedBuilder()
-        .setTitle("⏱ Timeout Applied")
-        .setColor("Orange")
+      // إرسال رسالة خاصة للعضو
+      const dmEmbed = new EmbedBuilder()
+        .setTitle("⚠️ تم إعطاءك تايم أوت")
+        .setColor("Red")
         .addFields(
-          { name: "👤 User", value: `<@${member.id}>`, inline: true },
-          { name: "🕒 Duration", value: `${duration / 1000} seconds`, inline: true },
-          { name: "📄 Reason", value: reason, inline: true },
-          { name: "⚠️ Moderator", value: "System", inline: true }
+          { name: "السبب", value: reason },
+          { name: "المدة", value: `${durationMs / 1000} ثانية` },
+          { name: "نص الرسالة", value: message.content || "لا توجد" }
         )
         .setTimestamp();
-      timeoutChannel.send({ content: `<@${member.id}>`, embeds: [embed] });
-    }
 
-    // إزالة الرتبة بعد انتهاء الوقت
-    setTimeout(async () => {
-      if (member.roles.cache.has(config.timeoutRoleId)) {
-        await member.roles.remove(config.timeoutRoleId).catch(console.error);
-        if (timeoutChannel) {
-          timeoutChannel.send(`✅ <@${member.id}> انتهى التايم أوت وتم إزالة الرتبة.`);
-        }
-      }
-    }, duration);
+      await member.send({ embeds: [dmEmbed] }).catch(() => {});
+
+    } catch (err) {
+      console.error("Error punishing user:", err);
+    }
   }
 
-  // ---------------- Anti-BadWords ----------------
-  if (config.badWords.some(word => content.includes(word))) return punishUser("Bad language");
+  // ==========================================
+  // كلمات سيئة
+  if (config.badWords.some(word => content.includes(word))) {
+    return punishUser("كلمات مسيئة", config.punishDurations.other);
+  }
 
-  // ---------------- Anti-MentionEveryone ----------------
-  if (message.mentions.everyone) return punishUser("Mentioning @everyone");
+  // منشن @everyone
+  if (message.mentions.everyone) {
+    return punishUser("منشن @everyone", config.punishDurations.other);
+  }
 
-  // ---------------- Anti-Links ----------------
-  if (/https?:\/\/|discord\.gg|www\.|\.com|\.net|\.org|\.io|\.me|\.gg/i.test(content))
-    return punishUser("Posting links");
+  // روابط
+  if (/https?:\/\/|discord\.gg|www\.|\.com|\.net|\.org|\.io|\.me|\.gg/i.test(content)) {
+    return punishUser("نشر روابط", config.punishDurations.other);
+  }
 
-  // ---------------- Emoji Spam ----------------
+  // إيموجي سبام
   const emojiCount = (content.match(/<a?:.+?:\d+>|[\uD800-\uDBFF][\uDC00-\uDFFF]/g) || []).length;
-  if (emojiCount >= config.emojiSpamLimit) return punishUser("Emoji spam");
+  if (emojiCount >= config.emojiSpamLimit) {
+    return punishUser("إيموجي سبام", config.punishDurations.other);
+  }
 
-  // ---------------- Message Spam ----------------
-  const now = Date.now();
+  // سبام رسائل
   const timestamps = userMessages.get(message.author.id) || [];
   const updated = timestamps.filter(t => now - t < config.timeWindow);
   updated.push(now);
   userMessages.set(message.author.id, updated);
 
-  if (updated.length >= config.spamLimit) return punishUser("Message spam");
-});
-
-// ---------------- Timeout Command ----------------
-client.on("messageCreate", async message => {
-  if (!message.content.startsWith(prefix) || message.author.bot || !message.guild) return;
-
-  const args = message.content.slice(prefix.length).trim().split(/ +/);
-  const command = args.shift().toLowerCase();
-
-  if (command !== "timeout" && command !== "تايم-اوت") return;
-  if (!hasPermission(message.member, command))
-    return message.reply("❌ ما عندك صلاحية استخدام هذا الأمر.");
-
-  const member = message.mentions.members.first();
-  const time = parseInt(args[1]);
-  const reason = args.slice(2).join(" ") || "No reason provided";
-
-  if (!member || isNaN(time)) return message.reply("❌ منشن العضو والمدة بالمللي ثانية.");
-
-  // إعطاء رتبة التايم أوت
-  if (config.timeoutRoleId && member.roles) await member.roles.add(config.timeoutRoleId).catch(console.error);
-
-  // إعطاء تايم أوت حقيقي
-  if (member.manageable) await member.timeout(time, reason).catch(console.error);
-
-  // إرسال إشعار في روم التايم أوت
-  const timeoutChannel = message.guild.channels.cache.get(config.timeoutChannelId);
-  if (timeoutChannel) {
-    const embed = new EmbedBuilder()
-      .setTitle("⏱ Timeout Applied")
-      .setColor("Orange")
-      .addFields(
-        { name: "👤 User", value: `<@${member.id}>`, inline: true },
-        { name: "🕒 Duration", value: `${time / 1000} seconds`, inline: true },
-        { name: "📄 Reason", value: reason, inline: true },
-        { name: "⚠️ Moderator", value: message.author.tag, inline: true }
-      )
-      .setTimestamp();
-    timeoutChannel.send({ content: `<@${member.id}>`, embeds: [embed] });
+  if (updated.length >= config.spamLimit) {
+    return punishUser("سبام رسائل", config.punishDurations.other);
   }
-
-  // إزالة الرتبة بعد انتهاء الوقت
-  setTimeout(async () => {
-    if (member.roles.cache.has(config.timeoutRoleId)) {
-      await member.roles.remove(config.timeoutRoleId).catch(console.error);
-      if (timeoutChannel) {
-        timeoutChannel.send(`✅ <@${member.id}> انتهى التايم أوت وتم إزالة الرتبة.`);
-      }
-    }
-  }, time);
-
-  return message.reply(`✅ تم إعطاء ${member.user.tag} تايم أوت لمدة ${time / 1000} ثانية.`);
 });
 
 // ================== Welcome & Invite System ==================
@@ -550,6 +491,7 @@ client.once("clientReady", () => {
 });
 
 client.login(TOKEN);
+
 
 
 
