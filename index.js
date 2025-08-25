@@ -150,13 +150,29 @@ client.on("messageCreate", async message => {
     return;
   }
 
-  if (/https?:\/\/|discord\.gg/i.test(content)) {
-    await message.delete().catch(() => {});
-    await deleteUserMessages(message.channel, message.author.id);
-    const member = await timeoutMember(message.guild, message.author.id, config.punishDurations.other, "Posting links");
-    if (member) await logPunishment(message.guild, member, "Posting links", message.content, config.punishDurations.other, message.channel.name);
-    return;
+  if (/\b(?:https?:\/\/|www\.|discord\.gg|[a-z0-9-]+\.(com|net|org|io|gg|me|co|xyz|info|edu|gov|mil|biz|shop|site|online|link|top|app|dev|cloud|store|tech|tv|us|uk|sa)(\/|\b))/i.test(content)) {
+  await message.delete().catch(() => {});
+  await deleteUserMessages(message.channel, message.author.id);
+
+  const member = await timeoutMember(
+    message.guild,
+    message.author.id,
+    config.punishDurations.other,
+    "Posting links"
+  );
+
+  if (member) {
+    await logPunishment(
+      message.guild,
+      member,
+      "Posting links",
+      message.content,
+      config.punishDurations.other,
+      message.channel.name
+    );
   }
+  return;
+}
 
   const emojiCount = (content.match(/<a?:.+?:\d+>|[\uD800-\uDBFF][\uDC00-\uDFFF]/g) || []).length;
   if (emojiCount >= config.emojiSpamLimit) {
@@ -763,6 +779,7 @@ client.once("clientReady", () => {
 });
 
 client.login(TOKEN);
+
 
 
 
