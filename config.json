@@ -37,28 +37,9 @@
     "fullAccess": "1209871038284832908",
     "mediumAccess": "1195472593541673031"
   },
-  "logChannels": {
-    "banLogChannelId": "1196375859104317461",
-    "unbanLogChannelId": "1196376525461786734",
-    "memberRemoveLogChannelId": "1196376358348140544",
-    "messageDeleteLogChannelId": "1196376149702475818",
-    "messageUpdateLogChannelId": "1196376203460870195",
-    "channelDeleteLogChannelId": "1196376095969255455",
-    "channelCreateLogChannelId": "1196376023693013172",
-    "channelUpdateLogChannelId": "1196376605208096818",
-    "roleDeleteLogChannelId": "1196376183575674880",
-    "roleCreateLogChannelId": "1196376068882448444",
-    "roleUpdateLogChannelId": "1196376630411673650",
-    "nicknameUpdateLogChannelId": "1196376380351451208",
-    "voiceLogChannelId": "1196376765401153586",
-    "timeoutLogChannelId": "1196375994232225802",
-    "kickLogChannelId": "1196376279646228511",
-    "protectionLogChannelId": "1196376675055845426",
-    "inviteLogChannelId": "1196376497338986517",
-    "guildUpdateLogChannelId": "1209859968560537620"
-  },
   "nukePunishmentRoleId": "1401676811448094850",
   "serverImageUrl": "https://tinyurl.com/4n4zr9k6",
   "announcementChannelId": "1402972331680206942"
 }
+
 
