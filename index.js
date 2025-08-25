@@ -139,53 +139,49 @@ function hasPermission(member, command) {
   return false;
 }
 // -------------------------------------------------------------------------------------------
-// ================== الفلاتر و تايم أوت + إرسال في الروم المحدد ==================
+// فلتر الرسائل
 client.on("messageCreate", async message => {
   if (message.author.bot || !message.guild) return;
   if (message.member.roles.cache.some(r => config.bypassRoleIds.includes(r.id))) return;
 
   const content = message.content.toLowerCase();
 
-  // فلترة الكلمات السيئة
-  if (config.badWords.some(word => content.includes(word))) {
+  async function punishUser(reason) {
     await message.delete().catch(() => {});
     await deleteUserMessages(message.channel, message.author.id);
-    const member = await punishWithSupport(message.guild, message.author.id, config.punishDurations.other, "Bad language");
-    if (member) await logPunishment(message.guild, member, "Bad language", message.content, config.punishDurations.other, message.channel.name);
-    sendTimeoutMessage(member, "Bad language");
-    return;
+
+    const member = await punishWithSupport(message.guild, message.author.id, config.punishDurations.other, reason);
+
+    if (member) {
+      await logPunishment(
+        message.guild,
+        member,
+        reason,
+        message.content,
+        config.punishDurations.other,
+        message.channel.name
+      );
+
+      // إذا عندنا روم التايم أوت، نرسل له رسالة
+      const timeoutChannel = message.guild.channels.cache.get(config.timeoutChannelId);
+      if (timeoutChannel) {
+        timeoutChannel.send(`⚠️ ${member.user.tag} تم إعطاءه تايم أوت بسبب: ${reason}`);
+      }
+    }
   }
+
+  // كلمات سيئة
+  if (config.badWords.some(word => content.includes(word))) return punishUser("Bad language");
 
   // منشن للجميع
-  if (message.mentions.everyone) {
-    await message.delete().catch(() => {});
-    await deleteUserMessages(message.channel, message.author.id);
-    const member = await punishWithSupport(message.guild, message.author.id, config.punishDurations.other, "Mentioning @everyone");
-    if (member) await logPunishment(message.guild, member, "Mentioning @everyone", message.content, config.punishDurations.other, message.channel.name);
-    sendTimeoutMessage(member, "Mentioning @everyone");
-    return;
-  }
+  if (message.mentions.everyone) return punishUser("Mentioning @everyone");
 
   // روابط
-  if (/https?:\/\/|discord\.gg|www\.|\.com|\.net|\.org|\.io|\.me|\.gg/i.test(content)) {
-    await message.delete().catch(() => {});
-    await deleteUserMessages(message.channel, message.author.id);
-    const member = await punishWithSupport(message.guild, message.author.id, config.punishDurations.other, "Posting links");
-    if (member) await logPunishment(message.guild, member, "Posting links", message.content, config.punishDurations.other, message.channel.name);
-    sendTimeoutMessage(member, "Posting links");
-    return;
-  }
+  if (/https?:\/\/|discord\.gg|www\.|\.com|\.net|\.org|\.io|\.me|\.gg/i.test(content)) return punishUser("Posting links");
 
   // إيموجي سبام
   const emojiCount = (content.match(/<a?:.+?:\d+>|[\uD800-\uDBFF][\uDC00-\uDFFF]/g) || []).length;
-  if (emojiCount >= config.emojiSpamLimit) {
-    await message.delete().catch(() => {});
-    await deleteUserMessages(message.channel, message.author.id);
-    const member = await punishWithSupport(message.guild, message.author.id, config.punishDurations.other, "Emoji spam");
-    if (member) await logPunishment(message.guild, member, "Emoji spam", message.content, config.punishDurations.other, message.channel.name);
-    sendTimeoutMessage(member, "Emoji spam");
-    return;
-  }
+  if (emojiCount >= config.emojiSpamLimit) return punishUser("Emoji spam");
 
   // سبام رسائل
   const now = Date.now();
@@ -194,35 +190,41 @@ client.on("messageCreate", async message => {
   updated.push(now);
   userMessages.set(message.author.id, updated);
 
-  if (updated.length >= config.spamLimit) {
-    await message.delete().catch(() => {});
-    await deleteUserMessages(message.channel, message.author.id);
-    const member = await punishWithSupport(message.guild, message.author.id, config.punishDurations.other, "Message spam");
-    if (member) await logPunishment(message.guild, member, "Message spam", message.content, config.punishDurations.other, message.channel.name);
-    sendTimeoutMessage(member, "Message spam");
-    return;
-  }
+  if (updated.length >= config.spamLimit) return punishUser("Message spam");
 });
 
-// ================== دالة لإرسال رسالة تايم أوت في روم محدد ==================
-async function sendTimeoutMessage(member, reason) {
-  if (!member) return;
-  try {
-    const channel = await client.channels.fetch(config.timeoutChannelId);
-    if (!channel) return;
+// أمر التايم أوت
+client.on("messageCreate", async (message) => {
+  if (!message.content.startsWith(prefix) || message.author.bot) return;
 
-    const embed = new EmbedBuilder()
-      .setColor("Red")
-      .setTitle("🚨 Timeout Applied")
-      .setDescription(`${member.user.tag} تم إعطاء تايم أوت بسبب: **${reason}**`)
-      .setTimestamp();
+  const args = message.content.slice(prefix.length).trim().split(/ +/);
+  const command = args.shift().toLowerCase();
 
-    channel.send({ content: `<@${member.id}>`, embeds: [embed] });
-  } catch (err) {
-    console.error("Error sending timeout message:", err);
+  if (command === "timeout" || command === "تايم-اوت") {
+    const member = message.mentions.members.first();
+    const time = parseInt(args[1]);
+    if (!member || isNaN(time)) return message.reply("❌ منشن العضو والمدة بالمللي ثانية.");
+
+    // إعطاء رتبة التايم أوت
+    await member.roles.add(config.timeoutRoleId).catch(console.error);
+
+    // إرسال رسالة في روم التايم أوت
+    const timeoutChannel = message.guild.channels.cache.get(config.timeoutChannelId);
+    if (timeoutChannel) {
+      timeoutChannel.send(`⏱️ ${member.user.tag} تم إعطاءه تايم أوت لمدة ${time / 1000} ثانية.`);
+    }
+
+    // إزالة الرتبة بعد انتهاء الوقت
+    setTimeout(async () => {
+      if (member.roles.cache.has(config.timeoutRoleId)) {
+        await member.roles.remove(config.timeoutRoleId).catch(console.error);
+        if (timeoutChannel) {
+          timeoutChannel.send(`✅ ${member.user.tag} انتهى التايم أوت وتم إزالة الرتبة.`);
+        }
+      }
+    }, time);
   }
-}
-
+});
 // ================== Welcome & Invite System ==================
 
 
@@ -335,14 +337,21 @@ function sendBoth(message, arabic, english) {
 
 
   // ================== COMMANDS ==================
-  if (!message.content.startsWith(prefix)) return;
+client.on("messageCreate", async (message) => {
+  if (!message.content.startsWith(prefix) || message.author.bot || !message.guild) return;
+
   const args = message.content.slice(prefix.length).trim().split(/ +/);
   const command = args.shift().toLowerCase();
-  if (!hasPermission(message.member, command)) return message.reply("❌ ما عندك صلاحية استخدام هذا الأمر.");
 
-  // ---------------- COMMANDS ----------------
-  if (command === "ping") return sendBoth(message, "🏓 البوت شغال تمام!", "🏓 Bot is up and running!");
-  
+  if (!hasPermission(message.member, command))
+    return message.reply("❌ ما عندك صلاحية استخدام هذا الأمر.");
+
+  // ---------------- PING ----------------
+  if (command === "ping") {
+    return sendBoth(message, "🏓 البوت شغال تمام!", "🏓 Bot is up and running!");
+  }
+
+  // ---------------- LOCK / UNLOCK ----------------
   if (command === "lock" || command === "اقفل") {
     await message.channel.permissionOverwrites.edit(message.guild.roles.everyone, { SendMessages: false });
     return sendBoth(message, "🔒 تم قفل القناة.", "🔒 Channel locked.");
@@ -353,30 +362,41 @@ function sendBoth(message, arabic, english) {
     return sendBoth(message, "🔓 تم فتح القناة.", "🔓 Channel unlocked.");
   }
 
+  // ---------------- CLEAR ----------------
   if (command === "مسح") {
     const amount = parseInt(args[0]);
-    if (!amount || amount < 1 || amount > 100) return sendBoth(message, "❌ رقم بين 1-100", "❌ Number between 1-100.");
+    if (!amount || amount < 1 || amount > 100) {
+      return sendBoth(message, "❌ رقم بين 1-100", "❌ Number between 1-100.");
+    }
     await message.channel.bulkDelete(amount, true);
     return sendBoth(message, `✅ تم حذف ${amount} رسالة.`, `✅ Deleted ${amount} messages.`);
   }
 
+  // ---------------- KICK ----------------
   if (command === "kick" || command === "كيك") {
     const member = message.mentions.members.first();
-    if (!member || !member.kickable) return sendBoth(message, "❌ لا يمكن طرده.", "❌ Cannot kick this user.");
+    if (!member || !member.kickable) {
+      return sendBoth(message, "❌ لا يمكن طرده.", "❌ Cannot kick this user.");
+    }
     await member.kick();
     return sendBoth(message, `✅ تم طرد ${member.user.tag}.`, `✅ Kicked ${member.user.tag}.`);
   }
 
+  // ---------------- BAN ----------------
   if (command === "ban" || command === "باند") {
     const member = message.mentions.members.first();
-    if (!member || !member.bannable) return sendBoth(message, "❌ لا يمكن حظره.", "❌ Cannot ban this user.");
+    if (!member || !member.bannable) {
+      return sendBoth(message, "❌ لا يمكن حظره.", "❌ Cannot ban this user.");
+    }
     await member.ban();
     return sendBoth(message, `✅ تم حظر ${member.user.tag}.`, `✅ Banned ${member.user.tag}.`);
   }
 
+  // ---------------- UNBAN ----------------
   if (command === "unban" || command === "فك-باند") {
     const userId = args[0]?.replace(/[<@!>]/g, "");
     if (!userId) return sendBoth(message, "❌ اكتب ID العضو.", "❌ Provide user ID.");
+
     try {
       await message.guild.bans.remove(userId);
       return sendBoth(message, `✅ تم فك الحظر عن ${userId}.`, `✅ Unbanned ${userId}.`);
@@ -385,73 +405,69 @@ function sendBoth(message, arabic, english) {
     }
   }
 
-  // ---------------- TIMEOUT COMMAND ----------------
-  if (command === "timeout" || command === "تايم-اوت") {
-    const member = message.mentions.members.first();
-    const time = parseInt(args[1]);
-    if (!member || isNaN(time)) return message.reply("❌ منشن العضو والمدة.");
-
-    await member.timeout(time, `Timeout by ${message.author.tag}`);
-
-    const supportChannel = message.guild.channels.cache.get("1409496930228113540");
-    if (supportChannel) {
-      supportChannel.send(`⚠️ ${member} تم إعطاء تايم أوت من قبل ${message.author.tag} لمدة ${time}ms.`);
-    }
-
-    return message.reply(`✅ تم إعطاء ${member.user.tag} تايم أوت وتم الإبلاغ في الروم.`);
-  }
-
-  // ---------------- RULES COMMAND ----------------
+  // ---------------- RULES ----------------
   if (command === "قوانين") {
-    if (args.length === 0) return message.reply("❌ اكتب محتوى القوانين بعد الأمر.");
+    if (!args.length) return message.reply("❌ اكتب محتوى القوانين بعد الأمر.");
+
     const content = args.join(" ");
     await message.delete().catch(() => {});
+
     const embed = new EmbedBuilder()
       .setTitle("📜 قوانين السيرفر")
       .setDescription(content)
       .setColor("Blue")
-      .setThumbnail(message.guild.iconURL())
+      .setThumbnail(message.guild.iconURL() || null)
       .setImage(config.serverImageUrl)
       .setTimestamp();
+
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
         .setCustomId("accept_rules")
         .setLabel("✅ أوافق على القوانين")
         .setStyle(ButtonStyle.Success)
     );
-    message.channel.send({ embeds: [embed], components: [row] });
+
+    return message.channel.send({ embeds: [embed], components: [row] });
   }
 
   // ---------------- ANNOUNCEMENT ----------------
   if (command === "اعلان") {
-    if (args.length === 0) return message.reply("❌ اكتب محتوى الإعلان بعد الأمر.");
+    if (!args.length) return message.reply("❌ اكتب محتوى الإعلان بعد الأمر.");
+
     const content = args.join(" ");
     await message.delete().catch(() => {});
-    const announcementChannel = message.guild.channels.cache.get(config.announcementChannelId) || message.channel;
+
+    const announcementChannel =
+      message.guild.channels.cache.get(config.announcementChannelId) || message.channel;
+
     const embed = new EmbedBuilder()
       .setTitle("📢 إعلان مجتمع C4")
       .setDescription(content)
       .setColor("Blue")
-      .setThumbnail(message.guild.iconURL())
+      .setThumbnail(message.guild.iconURL() || null)
       .setImage(config.serverImageUrl)
       .setTimestamp();
-    announcementChannel.send({ embeds: [embed] });
+
+    return announcementChannel.send({ embeds: [embed] });
   }
 
-  // ---------------- SAY COMMAND ----------------
+  // ---------------- SAY ----------------
   if (command === "say") {
+    if (!args.length) return message.reply("❌ اكتب الرسالة بعد الأمر.");
+
     const content = args.join(" ");
-    if (!content) return message.reply("❌ اكتب الرسالة بعد الأمر.");
     await message.delete().catch(() => {});
+
     const embed = new EmbedBuilder()
       .setAuthor({ name: message.guild.name, iconURL: message.guild.iconURL() || null })
       .setDescription(content)
       .setColor("#2F3136")
       .setTimestamp();
-    message.channel.send({ embeds: [embed] });
+
+    return message.channel.send({ embeds: [embed] });
   }
 
-  // ---------------- HELP COMMAND ----------------
+  // ---------------- HELP ----------------
   if (command === "help" || command === "مساعدة") {
     await message.delete().catch(() => {});
     return message.channel.send(`🔧 **Available Commands | الأوامر المتاحة:**
@@ -461,7 +477,6 @@ function sendBoth(message, arabic, english) {
 \`&كيك @user\`
 \`&باند @user\`
 \`&فك-باند @userId\`
-\`&تايم-اوت @user 60000\`
 \`&قوانين <نص>\`
 \`&اعلان <نص>\`
 \`&say <نص>\``);
@@ -602,6 +617,7 @@ client.once("clientReady", () => {
 });
 
 client.login(TOKEN);
+
 
 
 
