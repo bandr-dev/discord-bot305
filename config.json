@@ -19,8 +19,8 @@
   "timeWindow": 10000,
 
   "punishDurations": {
-    "nuke": 604800000,       // 7 أيام
-    "other": 86400000        // 24 ساعة
+    "nuke": 604800000,       
+    "other": 86400000        
   },
 
   "badWords": [
@@ -57,3 +57,4 @@
   "timeoutRoleId": "1401676811448094850",
   "supportRoleId": "1401722722534428732"
 }
+
