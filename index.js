@@ -4,7 +4,6 @@ const {
 } = require("discord.js");
 
 const config = require("./config.json");
-
 const { open } = require("sqlite");
 const sqlite3 = require("sqlite3");
 
@@ -30,74 +29,59 @@ const prefix = '&';
 const invites = new Map();
 const userMessages = new Map();
 
-// ================== Anti-Nuke Protection ==================
-client.on("guildAuditLogEntryCreate", async entry => {
-  const destructiveActions = [
-    AuditLogEvent.RoleDelete,
-    AuditLogEvent.ChannelDelete,
-    AuditLogEvent.MemberBanAdd,
-    AuditLogEvent.WebhookCreate,
-    AuditLogEvent.BotAdd,
-    AuditLogEvent.EmojiDelete
-  ];
-
-  if (!destructiveActions.includes(entry.action)) return;
-
-  const executor = entry.executor;
-  if (!executor || executor.bot || executor.id === config.ownerId) return;
-
-  const guild = entry.guild;
-  const member = await guild.members.fetch(executor.id).catch(() => null);
-  if (!member) return;
-  if (member.roles.cache.some(r => config.bypassRoleIds.includes(r.id))) return;
-
-  try {
-    await member.roles.set([config.nukePunishmentRoleId]);
-    const weekMs = 7 * 24 * 60 * 60 * 1000;
-    await member.timeout(weekMs, "Nuke Protection - Destructive Action");
-
-    const logChannel = guild.channels.cache.get(config.logChannelId);
-    if (!logChannel) return;
-
-    const embed = new EmbedBuilder()
-      .setTitle("🚨 Nuke Attempt Detected")
-      .setDescription(`User: ${executor.tag} حاول يسوي أكشن خطير وتم معاقبته.`)
-      .addFields(
-        { name: "👤 User", value: `${executor.tag} (${executor.id})` },
-        { name: "📄 Reason", value: "Nuke Protection" },
-        { name: "⏱ Duration", value: "7 days" },
-        { name: "🏷 Action", value: entry.action.toString() }
-      )
-      .setColor("Red")
-      .setTimestamp();
-
-    logChannel.send({
-      content: config.adminRoleIds.map(r => `<@&${r}>`).join(" "),
-      embeds: [embed]
-    });
-  } catch (err) {
-    console.error("Anti-nuke error:", err);
-  }
-});
-
 // -------------------------------------------------------------------------------------------
-
+// دوال المساعدة
 async function deleteUserMessages(channel, userId) {
   const messages = await channel.messages.fetch({ limit: 30 });
   const userMsgs = messages.filter(m => m.author.id === userId);
   if (userMsgs.size > 0) await channel.bulkDelete(userMsgs, true).catch(() => {});
 }
 
-async function timeoutMember(guild, userId, duration, reason) {
+async function punishWithSupport(guild, userId, duration, reason) {
   try {
     const member = await guild.members.fetch(userId);
     if (!member) return null;
-    if (member.roles.cache.some(r => config.bypassRoleIds.includes(r.id)) ||
-        member.permissions.has(PermissionsBitField.Flags.Administrator)) return null;
 
-    await member.timeout(duration, reason);
+    if (
+      member.roles.cache.some(r => config.bypassRoleIds.includes(r.id)) ||
+      member.permissions.has(PermissionsBitField.Flags.Administrator)
+    ) return null;
+
+    // 1. Timeout
+    await member.timeout(duration, reason).catch(() => {});
+
+    // 2. رتبة
+    const muteRole = guild.roles.cache.get(config.timeoutRoleId);
+    if (muteRole) await member.roles.add(muteRole).catch(() => {});
+
+    // 3. روم خاص
+    const supportChannel = await guild.channels.create({
+      name: `support-${member.user.username}`,
+      type: 0,
+      permissionOverwrites: [
+        { id: guild.id, deny: [PermissionsBitField.Flags.ViewChannel] },
+        {
+          id: member.id,
+          allow: [
+            PermissionsBitField.Flags.ViewChannel,
+            PermissionsBitField.Flags.SendMessages,
+            PermissionsBitField.Flags.ReadMessageHistory,
+          ],
+        },
+        { id: config.supportRoleId, allow: [PermissionsBitField.Flags.ViewChannel] },
+      ],
+    });
+
+    // 4. رسالة في الروم
+    await supportChannel.send({
+      content: `⚠️ **${member.user}**\n\nتم إعطاؤك عقوبة **Timeout**.\n\n**السبب:** ${reason}\n**المدة:** ${duration / (60 * 1000)} دقيقة\n\n📌 الرجاء الالتزام بالقوانين لتفادي العقوبات القادمة.\nإذا عندك استفسار تقدر تتواصل هنا مع طاقم الدعم. ✅`
+    });
+
     return member;
-  } catch (err) { console.error(err); return null; }
+  } catch (err) {
+    console.error("punishWithSupport error:", err);
+    return null;
+  }
 }
 
 async function logPunishment(guild, member, reason, content, duration, channelName) {
@@ -116,73 +100,55 @@ async function logPunishment(guild, member, reason, content, duration, channelNa
     )
     .setTimestamp();
 
-  logChannel.send({
-    content: reason === "Nuke Protection" ? config.adminRoleIds.map(r => `<@&${r}>`).join(" ") : null,
-    embeds: [embed]
-  });
-}
-
-function sendBoth(message, arabic, english) {
-  return message.reply({ content: `${arabic}\n${english}` });
+  logChannel.send({ embeds: [embed] });
 }
 
 // -------------------------------------------------------------------------------------------
-
+// فلتر الرسائل
 client.on("messageCreate", async message => {
   if (message.author.bot || !message.guild) return;
   if (message.member.roles.cache.some(r => config.bypassRoleIds.includes(r.id))) return;
 
   const content = message.content.toLowerCase();
 
+  // كلمات سيئة
   if (config.badWords.some(word => content.includes(word))) {
     await message.delete().catch(() => {});
     await deleteUserMessages(message.channel, message.author.id);
-    const member = await timeoutMember(message.guild, message.author.id, config.punishDurations.other, "Bad language");
+    const member = await punishWithSupport(message.guild, message.author.id, config.punishDurations.other, "Bad language");
     if (member) await logPunishment(message.guild, member, "Bad language", message.content, config.punishDurations.other, message.channel.name);
     return;
   }
 
+  // منشن للجميع
   if (message.mentions.everyone) {
     await message.delete().catch(() => {});
     await deleteUserMessages(message.channel, message.author.id);
-    const member = await timeoutMember(message.guild, message.author.id, config.punishDurations.other, "Mentioning @everyone");
+    const member = await punishWithSupport(message.guild, message.author.id, config.punishDurations.other, "Mentioning @everyone");
     if (member) await logPunishment(message.guild, member, "Mentioning @everyone", message.content, config.punishDurations.other, message.channel.name);
     return;
   }
 
-  if (/\b(?:https?:\/\/|www\.|discord\.gg|[a-z0-9-]+\.(com|net|org|io|gg|me|co|xyz|info|edu|gov|mil|biz|shop|site|online|link|top|app|dev|cloud|store|tech|tv|us|uk|sa)(\/|\b))/i.test(content)) {
-  await message.delete().catch(() => {});
-  await deleteUserMessages(message.channel, message.author.id);
-
-  const member = await timeoutMember(
-    message.guild,
-    message.author.id,
-    config.punishDurations.other,
-    "Posting links"
-  );
-
-  if (member) {
-    await logPunishment(
-      message.guild,
-      member,
-      "Posting links",
-      message.content,
-      config.punishDurations.other,
-      message.channel.name
-    );
+  // روابط
+  if (/https?:\/\/|discord\.gg|www\.|\.com|\.net|\.org|\.io|\.me|\.gg/i.test(content)) {
+    await message.delete().catch(() => {});
+    await deleteUserMessages(message.channel, message.author.id);
+    const member = await punishWithSupport(message.guild, message.author.id, config.punishDurations.other, "Posting links");
+    if (member) await logPunishment(message.guild, member, "Posting links", message.content, config.punishDurations.other, message.channel.name);
+    return;
   }
-  return;
-}
 
+  // إيموجي سبام
   const emojiCount = (content.match(/<a?:.+?:\d+>|[\uD800-\uDBFF][\uDC00-\uDFFF]/g) || []).length;
   if (emojiCount >= config.emojiSpamLimit) {
     await message.delete().catch(() => {});
     await deleteUserMessages(message.channel, message.author.id);
-    const member = await timeoutMember(message.guild, message.author.id, config.punishDurations.other, "Emoji spam");
+    const member = await punishWithSupport(message.guild, message.author.id, config.punishDurations.other, "Emoji spam");
     if (member) await logPunishment(message.guild, member, "Emoji spam", message.content, config.punishDurations.other, message.channel.name);
     return;
   }
 
+  // سبام رسائل
   const now = Date.now();
   const timestamps = userMessages.get(message.author.id) || [];
   const updated = timestamps.filter(t => now - t < config.timeWindow);
@@ -192,7 +158,7 @@ client.on("messageCreate", async message => {
   if (updated.length >= config.spamLimit) {
     await message.delete().catch(() => {});
     await deleteUserMessages(message.channel, message.author.id);
-    const member = await timeoutMember(message.guild, message.author.id, config.punishDurations.other, "Message spam");
+    const member = await punishWithSupport(message.guild, message.author.id, config.punishDurations.other, "Message spam");
     if (member) await logPunishment(message.guild, member, "Message spam", message.content, config.punishDurations.other, message.channel.name);
     return;
   }
@@ -329,7 +295,11 @@ client.on("messageCreate", async (message) => {
 
   const args = message.content.slice(prefix.length).trim().split(/ +/);
   const command = args.shift().toLowerCase();
-  if (!hasPermission(message.member, command)) return message.reply("❌ ما عندك صلاحية استخدام هذا الأمر.");
+
+  // التحقق من الصلاحيات
+  if (!hasPermission(message.member, command)) {
+    return message.reply("❌ ما عندك صلاحية استخدام هذا الأمر.");
+  }
 
   if (command === "ping") {
     return sendBoth(message, "🏓 البوت شغال تمام!", "🏓 Bot is up and running!");
@@ -379,12 +349,14 @@ client.on("messageCreate", async (message) => {
     }
   }
 
+  // ✅ أمر التايم أوت (باستخدام punishWithSupport)
   if (command === "timeout" || command === "تايم-اوت") {
     const member = message.mentions.members.first();
-    const time = parseInt(args[1]);
-    if (!member || isNaN(time)) return sendBoth(message, "❌ منشن العضو والمدة.", "❌ Mention user and duration.");
-    await member.timeout(time, `Timeout by ${message.author.tag}`);
-    return sendBoth(message, `✅ تم إعطاء ${member.user.tag} تايم أوت.`, `✅ Timeout given to ${member.user.tag}.`);
+    const time = parseInt(args[0]); // الوقت بالملي ثانية
+    if (!member || isNaN(time)) return message.reply("❌ منشن العضو وحط المدة بالمللي ثانية.");
+
+    await punishWithSupport(message.guild, member.id, time, `Timeout by ${message.author.tag}`);
+    return message.reply(`✅ تم إعطاء ${member.user.tag} تايم أوت + فتح روم دعم.`);
   }
 
   if (command === "قوانين") {
@@ -411,34 +383,25 @@ client.on("messageCreate", async (message) => {
     message.channel.send({ embeds: [embed], components: [row] });
   }
 
-if (command === "اعلان") {
-  if (args.length === 0) return message.reply("❌ اكتب محتوى الإعلان بعد الأمر.");
-  const content = args.join(" ");
+  if (command === "اعلان") {
+    if (args.length === 0) return message.reply("❌ اكتب محتوى الإعلان بعد الأمر.");
+    const content = args.join(" ");
 
-  await message.delete().catch(() => {});
+    await message.delete().catch(() => {});
 
-  // نجيب قناة الإعلانات من الكونفق
-  const announcementChannel = message.guild.channels.cache.get(config.announcementChannelId);
-  console.log("🔍 محاولة إرسال إعلان في:", announcementChannel?.id || "القناة غير موجودة");
+    const announcementChannel = message.guild.channels.cache.get(config.announcementChannelId);
 
-  const embed = new EmbedBuilder()
-    .setTitle("📢 إعلان مجتمع C4")
-    .setDescription(content)
-    .setColor("Blue")
-    .setThumbnail(message.guild.iconURL())
-    .setImage(config.serverImageUrl)
-    .setTimestamp();
+    const embed = new EmbedBuilder()
+      .setTitle("📢 إعلان مجتمع C4")
+      .setDescription(content)
+      .setColor("Blue")
+      .setThumbnail(message.guild.iconURL())
+      .setImage(config.serverImageUrl)
+      .setTimestamp();
 
-  // إذا لقى قناة الإعلانات يرسل فيها، غير كذا يرسل في نفس الروم
-  const targetChannel = announcementChannel || message.channel;
-
-  targetChannel.send({ embeds: [embed] })
-    .then(() => console.log("✅ الإعلان تم إرساله بنجاح"))
-    .catch(err => console.error("❌ خطأ أثناء إرسال الإعلان:", err));
-}
-
-
-
+    const targetChannel = announcementChannel || message.channel;
+    targetChannel.send({ embeds: [embed] });
+  }
 
   if (command === "say") {
     const content = args.join(" ");
@@ -481,6 +444,7 @@ client.on("interactionCreate", async (interaction) => {
     await interaction.member.roles.add(config.rulesRoleId).catch(console.error);
   }
 });
+
 
 // -------------------------------------------------------------------------------------------
 
@@ -607,6 +571,7 @@ client.once("clientReady", () => {
 });
 
 client.login(TOKEN);
+
 
 
 
