@@ -39,23 +39,23 @@ client.on("messageCreate", async message => {
   const content = message.content.toLowerCase();
 
   async function punishUser(reason, duration = config.punishDurations.other) {
-    await message.delete().catch(() => {});
-    await deleteUserMessages(message.channel, message.author.id);
+    try {
+      await message.delete().catch(() => {});
+    } catch {}
 
-    const member = await punishWithSupport(message.guild, message.author.id, duration, reason);
+    const member = message.member;
 
-    if (!member) return;
+    // إعطاء رتبة تايم أوت
+    if (config.timeoutRoleId && member.roles) {
+      await member.roles.add(config.timeoutRoleId).catch(console.error);
+    }
 
-    await logPunishment(
-      message.guild,
-      member,
-      reason,
-      message.content,
-      duration,
-      message.channel.name
-    );
+    // إعطاء تايم أوت حقيقي
+    if (member.manageable) {
+      await member.timeout(duration, reason).catch(console.error);
+    }
 
-    // إذا عندنا روم التايم أوت، نرسل له رسالة
+    // إرسال إشعار
     const timeoutChannel = message.guild.channels.cache.get(config.timeoutChannelId);
     if (timeoutChannel) {
       const embed = new EmbedBuilder()
@@ -69,15 +69,17 @@ client.on("messageCreate", async message => {
         )
         .setTimestamp();
       timeoutChannel.send({ content: `<@${member.id}>`, embeds: [embed] });
+    }
 
-      // إزالة الرتبة بعد انتهاء الوقت
-      setTimeout(async () => {
-        if (member.roles.cache.has(config.timeoutRoleId)) {
-          await member.roles.remove(config.timeoutRoleId).catch(console.error);
+    // إزالة الرتبة بعد انتهاء الوقت
+    setTimeout(async () => {
+      if (member.roles.cache.has(config.timeoutRoleId)) {
+        await member.roles.remove(config.timeoutRoleId).catch(console.error);
+        if (timeoutChannel) {
           timeoutChannel.send(`✅ <@${member.id}> انتهى التايم أوت وتم إزالة الرتبة.`);
         }
-      }, duration);
-    }
+      }
+    }, duration);
   }
 
   // ---------------- Anti-BadWords ----------------
@@ -122,8 +124,12 @@ client.on("messageCreate", async message => {
   if (!member || isNaN(time)) return message.reply("❌ منشن العضو والمدة بالمللي ثانية.");
 
   // إعطاء رتبة التايم أوت
-  await member.roles.add(config.timeoutRoleId).catch(console.error);
+  if (config.timeoutRoleId && member.roles) await member.roles.add(config.timeoutRoleId).catch(console.error);
 
+  // إعطاء تايم أوت حقيقي
+  if (member.manageable) await member.timeout(time, reason).catch(console.error);
+
+  // إرسال إشعار في روم التايم أوت
   const timeoutChannel = message.guild.channels.cache.get(config.timeoutChannelId);
   if (timeoutChannel) {
     const embed = new EmbedBuilder()
@@ -544,6 +550,7 @@ client.once("clientReady", () => {
 });
 
 client.login(TOKEN);
+
 
 
 
